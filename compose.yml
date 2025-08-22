@@ -1,0 +1,6 @@
+services:
+  basilbot:
+    build: .
+    environment:
+      - BOT_STATIC_PATH=/app/static
+      - BOT_TOKEN
