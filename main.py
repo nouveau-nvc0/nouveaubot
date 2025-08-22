@@ -19,7 +19,10 @@ from aiogram import Bot, Dispatcher
 from bot.route import route
 
 import asyncio
+import wand
 
+wand.resource.limits['width'] = 32000
+wand.resource.limits['height'] = 32000
 
 async def main(token: str, static_path: str) -> None:
     bot = Bot(token)

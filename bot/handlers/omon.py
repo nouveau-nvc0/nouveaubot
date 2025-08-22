@@ -1,18 +1,3 @@
-# Copyright (C) 2024 basilbot contributors
-
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 from aiogram import Dispatcher, Bot
 from aiogram.types import Message, BufferedInputFile
 from wand.image import Image
@@ -23,11 +8,12 @@ from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
 
 import os
-import cv2
 import numpy as np
 import json
 import random
 import math
+import cv2
+import insightface
 
 FRAME_WIDTH = 6
 FONT_CHARACTER_WEIGHT = 1
@@ -58,18 +44,18 @@ class OmonHandler:
     aliases = ["омон"]
     bot: Bot
 
-    face_cascade: cv2.CascadeClassifier
+    detector: insightface.app.FaceAnalysis
     sentences: list[tuple[str, str]]
-
     font_path: str
 
     def __init__(self, dp: Dispatcher, bot: Bot, static_path: str) -> None:
         self.bot = bot
 
-        self.font_path = os.path.join(
-            static_path, "LiberationSans-Regular.ttf")
-        self.face_cascade = cv2.CascadeClassifier(
-            os.path.join(static_path, "facerecognition.xml"))
+        self.font_path = os.path.join(static_path, "LiberationSans-Regular.ttf")
+
+        # инициализация insightface
+        self.detector = insightface.app.FaceAnalysis(providers=['CPUExecutionProvider'])
+        self.detector.prepare(ctx_id=0, det_size=(640, 640))
 
         with open(os.path.join(static_path, "sentences.txt"), "r") as f:
             self.sentences = [(k, prepare_sentence(v))
@@ -83,14 +69,12 @@ class OmonHandler:
             await message.answer("нужно прикрепить пикчу")
             return
 
-        print(photo.width, photo.height)
-
         pic = (await self.bot.download(photo)).read()
-
         nparr = np.frombuffer(pic, np.uint8)
         cv2img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        gray = cv2.cvtColor(cv2img, cv2.COLOR_BGR2GRAY)
-        faces = self.face_cascade.detectMultiScale(gray, 1.1, 5)
+
+        # поиск лиц через insightface
+        faces = self.detector.get(cv2img)
 
         if len(faces) == 0:
             await message.answer("лица не обнаружены")
@@ -100,7 +84,9 @@ class OmonHandler:
 
         with Image(blob=pic) as source:
             with Drawing() as draw:
-                for i, (x, y, w, h) in enumerate(faces):
+                for i, f in enumerate(faces):
+                    x1, y1, x2, y2 = f.bbox.astype(int)
+                    w, h = x2 - x1, y2 - y1
                     txt = "Статья " + chosen_sentences[i][0]
 
                     draw.stroke_width = FRAME_WIDTH
@@ -110,7 +96,8 @@ class OmonHandler:
                     draw.fill_opacity = 0x00
                     draw.font_size = FRAME_TEXT_FONT_SIZE
 
-                    points = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+                    # рамка вокруг лица
+                    points = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
                     draw.polygon(points)
 
                     metrics = draw.get_font_metrics(source, txt)
@@ -118,18 +105,17 @@ class OmonHandler:
                     draw.stroke_color = Color("black")
                     draw.fill_opacity = 0xFF
 
-                    points = [(x, y - FRAME_WIDTH),
-                              (x + metrics.text_width, y - FRAME_WIDTH),
-                              (x + metrics.text_width, y -
+                    points = [(x1, y1 - FRAME_WIDTH),
+                              (x1 + metrics.text_width, y1 - FRAME_WIDTH),
+                              (x1 + metrics.text_width, y1 -
                                metrics.text_height - FRAME_WIDTH),
-                              (x, y - metrics.text_height - FRAME_WIDTH)]
+                              (x1, y1 - metrics.text_height - FRAME_WIDTH)]
                     draw.polygon(points)
 
                     draw.stroke_color = Color("green")
                     draw.fill_color = Color("green")
                     draw.stroke_width = FONT_CHARACTER_WEIGHT
-                    draw.text(int(x), int(
-                        y - FRAME_WIDTH - FRAME_TEXT_PADDING_BOTTOM), txt)
+                    draw.text(int(x1), int(y1 - FRAME_WIDTH - FRAME_TEXT_PADDING_BOTTOM), txt)
 
                 draw(source)
 

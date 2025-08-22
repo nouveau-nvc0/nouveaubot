@@ -1,5 +1,5 @@
 FROM opensuse/leap:15.6
-RUN zypper -n in ImageMagick python311 Mesa-libGL1 libgthread-2_0-0 &&\
+RUN zypper -n in ImageMagick python311-devel Mesa-libGL1 libgthread-2_0-0 gcc-c++ &&\
     zypper -n clean --all && \
     rm -rf /var/cache/zypp/* &&\
     python3.11 -m ensurepip
