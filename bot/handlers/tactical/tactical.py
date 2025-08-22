@@ -98,4 +98,4 @@ class TacticalHandler:
 
             blob = source.make_blob("jpeg")
             await message.answer_photo(BufferedInputFile(blob, "default"),
-                                       "ваша пикча")
+                                       caption="ваша пикча")
