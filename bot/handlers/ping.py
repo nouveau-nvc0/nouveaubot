@@ -18,14 +18,11 @@ from aiogram.types import Message
 
 from bot.command_filter import CommandFilter
 
-from typing import Any
-
-
 class PingHandler:
     aliases = ["ping", "пинг"]
 
     def __init__(self, dp: Dispatcher) -> None:
         dp.message(CommandFilter(self.aliases))(self.ping)
 
-    async def ping(self, message: Message, args: list[str]) -> Any:
+    async def ping(self, message: Message, args: list[str]) -> None:
         await message.answer("понг")

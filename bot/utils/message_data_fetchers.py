@@ -27,6 +27,8 @@ def fetch_image_from_message(msg: Message) -> None | PhotoSize:
 
 
 def fetch_text_from_message(msg: Message) -> None | str:
+    if msg.text is None:
+        return None
     without_cmd = " ".join(msg.text.split()[1:])
     if not without_cmd:
         if not msg.caption:

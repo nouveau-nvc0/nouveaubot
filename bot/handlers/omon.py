@@ -28,8 +28,8 @@ import os
 import json
 import random
 import math
-from typing import Any
 import asyncio
+import logging
 
 _FRAME_WIDTH = 6
 _FONT_CHARACTER_WEIGHT = 1
@@ -150,16 +150,24 @@ class OmonHandler:
                                   source.height + appendix.height)
                     source.composite(
                         appendix, 0, source.height - appendix.height)
+            result = source.make_blob("jpeg")
+            if not isinstance(result, bytes):
+                logging.error(f'Unexcepted make_blob() result: {result}')
+                return 'не удалось обработать пикчу'
+            return result
 
-            return source.make_blob("jpeg")
-
-    async def handle(self, message: Message) -> Any:
+    async def handle(self, message: Message) -> None:
         photo = fetch_image_from_message(message)
         if not photo:
             await message.answer("нужно прикрепить пикчу")
             return
 
-        pic = await asyncio.get_running_loop().run_in_executor(None, (await self._bot.download(photo)).read)
+        stream = await self._bot.download(photo)
+        if stream is None:
+            await message.answer('не удалось скачать пикчу')
+            return
+        
+        pic = await asyncio.get_running_loop().run_in_executor(None, stream.read)
         result = await asyncio.get_running_loop().run_in_executor(executor, self.process_image, pic, self._font_path, self._sentences)
 
         if isinstance(result, bytes):
@@ -167,5 +175,8 @@ class OmonHandler:
                     BufferedInputFile(result, "default"),
                     caption="ваша пикча"
                 )
-        else:
+        elif isinstance(result, str):
             await message.answer(result)
+        else:
+            logging.error(f'Unexcepted process_image() result: {result}')
+            await message.answer('не удалось обработать пикчу')

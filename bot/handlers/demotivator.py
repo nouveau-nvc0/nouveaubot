@@ -16,8 +16,6 @@
 import logging
 import re
 from math import floor, ceil
-from urllib import request
-from typing import Any
 import asyncio
 
 from wand.color import Color
@@ -51,9 +49,9 @@ class _Demotivator:
         return dem
 
     @staticmethod
-    def create(img_data: bytes, text1: str, text2: list[str]) -> bytes:
-        text1 = re.sub(r'[<>]', '', text1)
-        text2 = re.sub(r'[<>]', '', r'\n'.join(text2))
+    def create(img_data: bytes, _text1: str, _text2: list[str]) -> bytes | str:
+        text1 = re.sub(r'[<>]', '', _text1)
+        text2 = re.sub(r'[<>]', '', r'\n'.join(_text2))
         draw = Drawing()
         draw.stroke_color = Color('white')
         img = Image(blob=img_data)
@@ -79,8 +77,12 @@ class _Demotivator:
         img_height = floor(0.07 * img.width + img.height)
         output.composite(image=dem1, left=0, top=img_height)
         output.composite(image=dem2, left=0, top=img_height + dem1.height)
-        output.format = 'jpeg'
-        return output.make_blob()
+        
+        result = output.make_blob("jpeg")
+        if not isinstance(result, bytes):
+            logging.error(f'Unexcepted make_blob() result: {result}')
+            return 'не удалось обработать пикчу'
+        return result
 
 
 class DemotivatorHandler:
@@ -91,19 +93,34 @@ class DemotivatorHandler:
         self._bot = bot
         dp.message(CommandFilter(self.aliases))(self.handle)
 
-    async def handle(self, message: Message) -> Any:
+    async def handle(self, message: Message) -> None:
+        if not message.text:
+            return
         command_regex = re.compile(r'^/([\w\u0400-\u04FF]+)(?:\s+([\s\S]+))?')
-        args = (command_regex.match(message.text).group(2) or "").splitlines()
+        matched = command_regex.match(message.text)
+        if matched is None:
+            return
+        args = (matched.group(2) or "").splitlines()
 
         photo = fetch_image_from_message(message)
         if not photo:
             await message.answer("нужно прикрепить пикчу")
             return
 
-        pic = await asyncio.get_running_loop().run_in_executor(None, (await self._bot.download(photo)).read)
+        stream = await self._bot.download(photo)
+        if not stream:
+            await message.answer('не удалось скачать пикчу')
+            return
+        pic = await asyncio.get_running_loop().run_in_executor(None, stream.read)
         result = await asyncio.get_running_loop().run_in_executor(executor, _Demotivator.create, pic, args[0], args[1:])
         
-        await message.answer_photo(
-                BufferedInputFile(result, "default"),
-                caption="ваша пикча"
-            )
+        if isinstance(result, bytes):
+            await message.answer_photo(
+                    BufferedInputFile(result, "default"),
+                    caption="ваша пикча"
+                )
+        elif isinstance(result, str):
+            await message.answer(result)
+        else:
+            logging.error(f'Unexcepted _Demotivator.create() result: {result}')
+            await message.answer('не удалось обработать пикчу')

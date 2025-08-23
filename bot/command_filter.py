@@ -15,7 +15,9 @@
 
 from aiogram.types import Message
 from aiogram.filters import Filter
+
 import re
+from typing import Any
 
 PATTERN = re.compile(
     r"^/([^\s@]+)(?:@ed25519bot)?(?=\s|$)(?:\s+([\s\S]*))?$"
@@ -37,12 +39,12 @@ class CommandFilter(Filter):
     def __init__(self, aliases: list[str]) -> None:
         self.aliases = aliases
 
-    async def __call__(self, message: Message) -> bool | dict[str, any]:
+    async def __call__(self, message: Message) -> bool | dict[str, Any]:
         msg = message.text if message.text else message.caption
         if not msg or msg == "":
             return False
         cmd, args = parse_command(msg)
-        if cmd is None or cmd not in self.aliases:
+        if cmd is None or cmd not in self.aliases or args is None:
             return False
 
         # Разделяем аргументы на строки и слова

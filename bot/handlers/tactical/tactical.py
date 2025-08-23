@@ -25,7 +25,7 @@ from bot.utils.detect_faces import detect_faces
 from bot.utils.pool_executor import executor
 
 import asyncio
-from typing import Any
+import logging
 
 _BUBBLE_HEIGHT = 260
 _BUBBLE_WIDTH = 2048
@@ -73,9 +73,13 @@ class TacticalHandler:
                 draw.polygon(points)
                 draw(source)
 
-            return source.make_blob("jpeg")
+            result = source.make_blob("jpeg")
+            if not isinstance(result, bytes):
+                logging.error(f'Unexcepted make_blob() result: {result}')
+                return 'не удалось обработать пикчу'
+            return result
 
-    async def handle(self, message: Message, args: list[str]) -> Any:
+    async def handle(self, message: Message, args: list[str]) -> None:
         photo = fetch_image_from_message(message)
         if not photo:
             await message.answer("нужно прикрепить пикчу")
@@ -89,11 +93,18 @@ class TacticalHandler:
                 await message.answer("напишите номер лица")
                 return
 
-        pic = await asyncio.get_running_loop().run_in_executor(None, (await self._bot.download(photo)).read)
+        stream = await self._bot.download(photo)
+        if not stream:
+            await message.answer('не удалось скачать пикчу')
+            return
+        pic = await asyncio.get_running_loop().run_in_executor(None, stream.read)
         result = await asyncio.get_running_loop().run_in_executor(executor, self.process_image, pic, face_num)
 
         if isinstance(result, bytes):
             await message.answer_photo(BufferedInputFile(result, "default"),
                                         caption="ваша пикча")
-        else:
+        elif isinstance(result, str):
             await message.answer(result)
+        else:
+            logging.error(f'Unexcepted process_image() result: {result}')
+            await message.answer('не удалось обработать пикчу')
