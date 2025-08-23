@@ -6,14 +6,13 @@ from wand.color import Color
 
 from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
+from bot.utils.detect_faces import detect_faces
 
 import os
 import numpy as np
 import json
 import random
 import math
-import cv2
-import insightface
 
 FRAME_WIDTH = 6
 FONT_CHARACTER_WEIGHT = 1
@@ -44,7 +43,6 @@ class OmonHandler:
     aliases = ["омон"]
     bot: Bot
 
-    detector: insightface.app.FaceAnalysis
     sentences: list[tuple[str, str]]
     font_path: str
 
@@ -52,10 +50,6 @@ class OmonHandler:
         self.bot = bot
 
         self.font_path = os.path.join(static_path, "LiberationSans-Regular.ttf")
-
-        # инициализация insightface
-        self.detector = insightface.app.FaceAnalysis(providers=['CPUExecutionProvider'])
-        self.detector.prepare(ctx_id=0, det_size=(640, 640))
 
         with open(os.path.join(static_path, "sentences.txt"), "r") as f:
             self.sentences = [(k, prepare_sentence(v))
@@ -70,11 +64,7 @@ class OmonHandler:
             return
 
         pic = (await self.bot.download(photo)).read()
-        nparr = np.frombuffer(pic, np.uint8)
-        cv2img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-        # поиск лиц через insightface
-        faces = self.detector.get(cv2img)
+        faces = detect_faces(pic)
 
         if len(faces) == 0:
             await message.answer("лица не обнаружены")
@@ -85,8 +75,7 @@ class OmonHandler:
         with Image(blob=pic) as source:
             with Drawing() as draw:
                 for i, f in enumerate(faces):
-                    x1, y1, x2, y2 = f.bbox.astype(int)
-                    w, h = x2 - x1, y2 - y1
+                    w, h = f.x2 - f.x1, f.y2 - f.y1
                     txt = "Статья " + chosen_sentences[i][0]
 
                     draw.stroke_width = FRAME_WIDTH
@@ -97,7 +86,7 @@ class OmonHandler:
                     draw.font_size = FRAME_TEXT_FONT_SIZE
 
                     # рамка вокруг лица
-                    points = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+                    points = [(f.x1, f.y1), (f.x2, f.y1), (f.x2, f.y2), (f.x1, f.y2)]
                     draw.polygon(points)
 
                     metrics = draw.get_font_metrics(source, txt)
@@ -105,17 +94,17 @@ class OmonHandler:
                     draw.stroke_color = Color("black")
                     draw.fill_opacity = 0xFF
 
-                    points = [(x1, y1 - FRAME_WIDTH),
-                              (x1 + metrics.text_width, y1 - FRAME_WIDTH),
-                              (x1 + metrics.text_width, y1 -
+                    points = [(f.x1, f.y1 - FRAME_WIDTH),
+                              (f.x1 + metrics.text_width, f.y1 - FRAME_WIDTH),
+                              (f.x1 + metrics.text_width, f.y1 -
                                metrics.text_height - FRAME_WIDTH),
-                              (x1, y1 - metrics.text_height - FRAME_WIDTH)]
+                              (f.x1, f.y1 - metrics.text_height - FRAME_WIDTH)]
                     draw.polygon(points)
 
                     draw.stroke_color = Color("green")
                     draw.fill_color = Color("green")
                     draw.stroke_width = FONT_CHARACTER_WEIGHT
-                    draw.text(int(x1), int(y1 - FRAME_WIDTH - FRAME_TEXT_PADDING_BOTTOM), txt)
+                    draw.text(int(f.x1), int(f.y1 - FRAME_WIDTH - FRAME_TEXT_PADDING_BOTTOM), txt)
 
                 draw(source)
 

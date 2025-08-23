@@ -21,17 +21,15 @@ from wand.color import Color
 
 from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
+from bot.utils.detect_faces import detect_faces
 
 import os
-import cv2
 import numpy as np
 
 
 class TacticalHandler:
     aliases = ["боевая", "бой"]
     bot: Bot
-
-    face_cascade: cv2.CascadeClassifier
 
     bubble_height = 260
     bubble_width = 2048
@@ -40,9 +38,6 @@ class TacticalHandler:
 
     def __init__(self, dp: Dispatcher, bot: Bot, static_path: str) -> None:
         self.bot = bot
-
-        self.face_cascade = cv2.CascadeClassifier(
-            os.path.join(static_path, "facerecognition.xml"))
 
         dp.message(CommandFilter(self.aliases))(self.handle)
 
@@ -61,11 +56,7 @@ class TacticalHandler:
                 return
 
         pic = (await self.bot.download(photo)).read()
-
-        nparr = np.frombuffer(pic, np.uint8)
-        cv2img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        gray = cv2.cvtColor(cv2img, cv2.COLOR_BGR2GRAY)
-        faces = self.face_cascade.detectMultiScale(gray, 1.1, 5)
+        faces = detect_faces(pic)
 
         if len(faces) == 0:
             await message.answer("лица не обнаружены")
@@ -85,12 +76,12 @@ class TacticalHandler:
 
             with Drawing() as draw:
                 draw.fill_color = Color("white")
-
+                face_width = faces[face_num].x2 - faces[face_num].x1
                 points = [
                     (source_width * self.bubble_dot1, bubble_height - 1),
                     (source_width * self.bubble_dot2, bubble_height - 1),
-                    (faces[face_num][0] + (faces[face_num][2] * 3 / 4),
-                     faces[face_num][1] + bubble_height)
+                    (faces[face_num].x1 + face_width * 0.5,
+                     faces[face_num].y1 + bubble_height)
                 ]
 
                 draw.polygon(points)
