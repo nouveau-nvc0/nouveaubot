@@ -6,3 +6,4 @@ services:
       - BOT_TOKEN
     volumes:
       - ./insightface_cache:/root/.insightface
+      - ./ImageMagick-7/policy.xml:/etc/ImageMagick-7/policy.xml:ro

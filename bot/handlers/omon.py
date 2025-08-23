@@ -9,7 +9,6 @@ from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.detect_faces import detect_faces
 
 import os
-import numpy as np
 import json
 import random
 import math
@@ -73,6 +72,9 @@ class OmonHandler:
         chosen_sentences = random.sample(self.sentences, len(faces))
 
         with Image(blob=pic) as source:
+            source.transform(resize="3072x3072>")
+            source.transform(resize="512x512<")
+
             with Drawing() as draw:
                 for i, f in enumerate(faces):
                     w, h = f.x2 - f.x1, f.y2 - f.y1
@@ -94,20 +96,27 @@ class OmonHandler:
                     draw.stroke_color = Color("black")
                     draw.fill_opacity = 0xFF
 
-                    points = [(f.x1, f.y1 - FRAME_WIDTH),
-                              (f.x1 + metrics.text_width, f.y1 - FRAME_WIDTH),
-                              (f.x1 + metrics.text_width, f.y1 -
-                               metrics.text_height - FRAME_WIDTH),
-                              (f.x1, f.y1 - metrics.text_height - FRAME_WIDTH)]
+                    # фон под текстом сверху
+                    top_y = max(f.y1 - metrics.text_height - FRAME_WIDTH, 0)
+                    base_y = max(f.y1 - FRAME_WIDTH, 0)
+                    points = [
+                        (f.x1, base_y),
+                        (f.x1 + metrics.text_width, base_y),
+                        (f.x1 + metrics.text_width, top_y),
+                        (f.x1, top_y)
+                    ]
                     draw.polygon(points)
 
+                    # сам текст
                     draw.stroke_color = Color("green")
                     draw.fill_color = Color("green")
                     draw.stroke_width = FONT_CHARACTER_WEIGHT
-                    draw.text(int(f.x1), int(f.y1 - FRAME_WIDTH - FRAME_TEXT_PADDING_BOTTOM), txt)
+                    text_y = max(f.y1 - FRAME_WIDTH - FRAME_TEXT_PADDING_BOTTOM, 0)
+                    draw.text(int(f.x1), text_y, txt)
 
                 draw(source)
 
+            # нижняя подпись с перечислением статей
             with Drawing() as draw:
                 draw.font = self.font_path
                 draw.font_size = int(BOTTOM_TEXT_FONT_FACTOR * source.width)
@@ -117,6 +126,7 @@ class OmonHandler:
                 txt = "\n".join("Статья {}. {}".format(x, y)
                                 for (x, y) in chosen_sentences)
                 metrics = draw.get_font_metrics(source, txt, multiline=True)
+
                 with Image(width=int(metrics.text_width + BOTTOM_TEXT_PADDING_TOP),
                            height=int(metrics.text_height),
                            background=Color("black")) as appendix:
@@ -132,5 +142,7 @@ class OmonHandler:
                         appendix, 0, source.height - appendix.height)
 
             blob = source.make_blob("jpeg")
-            await message.answer_photo(BufferedInputFile(blob, "default"),
-                                       caption="ваша пикча")
+            await message.answer_photo(
+                BufferedInputFile(blob, "default"),
+                caption="ваша пикча"
+            )
