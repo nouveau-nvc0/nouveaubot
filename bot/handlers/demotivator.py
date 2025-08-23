@@ -100,9 +100,9 @@ class DemotivatorHandler:
             await message.answer("нужно прикрепить пикчу")
             return
 
-        pic = (await self._bot.download(photo)).read()
-
+        pic = await asyncio.get_running_loop().run_in_executor(None, (await self._bot.download(photo)).read)
         result = await asyncio.get_running_loop().run_in_executor(executor, _Demotivator.create, pic, args[0], args[1:])
+        
         await message.answer_photo(
                 BufferedInputFile(result, "default"),
                 caption="ваша пикча"
