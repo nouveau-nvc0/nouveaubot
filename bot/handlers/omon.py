@@ -112,7 +112,8 @@ class OmonHandler:
                     draw.fill_color = Color("green")
                     draw.stroke_width = FONT_CHARACTER_WEIGHT
                     text_y = max(f.y1 - FRAME_WIDTH - FRAME_TEXT_PADDING_BOTTOM, 0)
-                    draw.text(int(f.x1), text_y, txt)
+                    text_x = max(int(f.x1), 0)
+                    draw.text(text_x, text_y, txt)
 
                 draw(source)
 
