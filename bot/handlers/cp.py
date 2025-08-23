@@ -20,6 +20,7 @@ from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_text_from_message
 
 import random
+from typing import Any
 
 
 class CPHandler:
@@ -28,7 +29,7 @@ class CPHandler:
     def __init__(self, dp: Dispatcher) -> None:
         dp.message(CommandFilter(self.aliases))(self.ping)
 
-    async def ping(self, message: Message, args: list[str]) -> any:
+    async def ping(self, message: Message, args: list[str]) -> Any:
         txt = fetch_text_from_message(message)
         if txt is None:
             await message.answer("дополнительно напишите или перешлите текст")

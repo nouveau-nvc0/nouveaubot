@@ -15,13 +15,11 @@
 
 from aiogram.types import Message
 from aiogram.filters import Filter
-
 import re
 
 PATTERN = re.compile(
-    r"^/([^\s@]+)(?:@ed25519bot)?(?=\s|$)(?:\s+(.*))?$"
+    r"^/([^\s@]+)(?:@ed25519bot)?(?=\s|$)(?:\s+([\s\S]*))?$"
 )
-
 
 def parse_command(text: str) -> tuple[None, None] | tuple[str, str]:
     mt = PATTERN.match(text)
@@ -32,7 +30,6 @@ def parse_command(text: str) -> tuple[None, None] | tuple[str, str]:
             args = ""
         return cmd, args
     return None, None
-
 
 class CommandFilter(Filter):
     aliases: list[str]
@@ -45,7 +42,9 @@ class CommandFilter(Filter):
         if not msg or msg == "":
             return False
         cmd, args = parse_command(msg)
-        if cmd is None or not (cmd in self.aliases):
+        if cmd is None or cmd not in self.aliases:
             return False
 
-        return {"args": args.split()}
+        # Разделяем аргументы на строки и слова
+        args_list = [line.split() for line in args.splitlines() if line.strip()]
+        return {"args": args_list}

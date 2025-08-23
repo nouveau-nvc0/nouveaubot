@@ -24,6 +24,7 @@ from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.detect_faces import detect_faces
 
 import os
+from typing import Any
 import numpy as np
 
 
@@ -41,7 +42,7 @@ class TacticalHandler:
 
         dp.message(CommandFilter(self.aliases))(self.handle)
 
-    async def handle(self, message: Message, args: list[str]) -> any:
+    async def handle(self, message: Message, args: list[str]) -> Any:
         photo = fetch_image_from_message(message)
         if not photo:
             await message.answer("нужно прикрепить пикчу")

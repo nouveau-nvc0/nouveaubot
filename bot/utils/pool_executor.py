@@ -1,4 +1,4 @@
-# Copyright (C) 2024 basilbot contributors
+# Copyright (C) 2025 basilbot contributors
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -13,19 +13,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from aiogram import Dispatcher
-from aiogram.types import Message
+from concurrent.futures import ProcessPoolExecutor
 
-from bot.command_filter import CommandFilter
-
-from typing import Any
-
-
-class PingHandler:
-    aliases = ["ping", "пинг"]
-
-    def __init__(self, dp: Dispatcher) -> None:
-        dp.message(CommandFilter(self.aliases))(self.ping)
-
-    async def ping(self, message: Message, args: list[str]) -> Any:
-        await message.answer("понг")
+executor = ProcessPoolExecutor()

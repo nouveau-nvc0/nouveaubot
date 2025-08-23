@@ -1,5 +1,11 @@
 FROM opensuse/leap:15.6
-RUN zypper -n in ImageMagick python311-devel Mesa-libGL1 libgthread-2_0-0 gcc-c++ &&\
+RUN zypper -n in ImageMagick \
+        python311-devel \
+        Mesa-libGL1 \
+        libgthread-2_0-0 \
+        noto-coloremoji-fonts \
+        dejavu-fonts \
+        gcc-c++ &&\
     zypper -n clean --all && \
     rm -rf /var/cache/zypp/* &&\
     python3.11 -m ensurepip

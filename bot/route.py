@@ -19,6 +19,7 @@ from bot.handlers.ping import PingHandler
 from bot.handlers.tactical.tactical import TacticalHandler
 from bot.handlers.omon import OmonHandler
 from bot.handlers.cp import CPHandler
+from bot.handlers.demotivator import DemotivatorHandler
 
 
 def route(dp: Dispatcher = None,
@@ -28,3 +29,4 @@ def route(dp: Dispatcher = None,
     CPHandler(dp)
     TacticalHandler(dp, bot, static_path)
     OmonHandler(dp, bot, static_path)
+    DemotivatorHandler(dp, bot)
