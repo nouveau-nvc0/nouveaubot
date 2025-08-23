@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from os import getenv
+from os import environ
 from aiogram import Bot, Dispatcher
 
 from bot.route import route
@@ -25,12 +25,12 @@ async def main(token: str, static_path: str) -> None:
     bot = Bot(token)
 
     dp = Dispatcher()
-    route(dp=dp, bot=bot, static_path=static_path)
+    await route(dp=dp, bot=bot, static_path=static_path)
 
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    token = getenv("BOT_TOKEN")
-    static_path = getenv("BOT_STATIC_PATH")
+    token = environ["BOT_TOKEN"]
+    static_path = environ["BOT_STATIC_PATH"]
 
     asyncio.run(main(token, static_path))

@@ -14,19 +14,40 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from aiogram import Dispatcher, Bot
+from aiogram.types import BotCommand
 
 from bot.handlers.ping import PingHandler
-from bot.handlers.tactical.tactical import TacticalHandler
+from bot.handlers.tactical import TacticalHandler
 from bot.handlers.omon import OmonHandler
 from bot.handlers.cp import CPHandler
 from bot.handlers.demotivator import DemotivatorHandler
+from bot.handler import Handler
+
+import re
 
 
-def route(dp: Dispatcher = None,
-          bot: Bot = None,
-          static_path: str = "") -> None:
-    PingHandler(dp)
-    CPHandler(dp)
-    TacticalHandler(dp, bot, static_path)
-    OmonHandler(dp, bot, static_path)
-    DemotivatorHandler(dp, bot)
+def _find_latin(aliases: list[str]) -> str | None:
+    for a in aliases:
+        if a and bool(re.fullmatch(r"[A-Za-z]+", a)):
+            return a
+
+async def route(dp: Dispatcher,
+                bot: Bot,
+                static_path: str) -> None:
+    handlers: list[Handler] = [
+      PingHandler(dp),
+      CPHandler(dp),
+      TacticalHandler(dp, bot),
+      OmonHandler(dp, bot, static_path),
+      DemotivatorHandler(dp, bot),
+    ]
+
+    commands: list[BotCommand] = []
+    
+    for handler in handlers:
+        name = _find_latin(handler.aliases)
+        if not name:
+            continue
+        commands.append(BotCommand(command=name, description=handler.description))
+    
+    await bot.set_my_commands(commands)

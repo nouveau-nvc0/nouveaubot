@@ -29,6 +29,7 @@ from aiogram.types import Message, BufferedInputFile
 from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.pool_executor import executor
+from bot.handler import Handler
 
 class _Demotivator:
     _BIG_FONT_SIZE = 0.052
@@ -85,10 +86,17 @@ class _Demotivator:
         return result
 
 
-class DemotivatorHandler:
-    aliases = ["dem", "дем"]
+class DemotivatorHandler(Handler):
     _bot: Bot
 
+    @property
+    def aliases(self) -> list[str]:
+        return ["dem", "дем"]
+    
+    @property
+    def description(self) -> str:
+        return 'сгенерировать демотиватор. разделитель - перенос строки'
+    
     def __init__(self, dp: Dispatcher, bot: Bot) -> None:
         self._bot = bot
         dp.message(CommandFilter(self.aliases))(self.handle)

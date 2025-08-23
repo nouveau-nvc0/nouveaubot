@@ -23,6 +23,7 @@ from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.detect_faces import detect_faces
 from bot.utils.pool_executor import executor
+from bot.handler import Handler
 
 import asyncio
 import logging
@@ -33,11 +34,18 @@ _BUBBLE_DOT1 = 12 / 17
 _BUBBLE_DOT2 = 16 / 17
 
 
-class TacticalHandler:
-    aliases = ["боевая", "бой", "tactical", "tact"]
+class TacticalHandler(Handler):
     _bot: Bot
 
-    def __init__(self, dp: Dispatcher, bot: Bot, static_path: str) -> None:
+    @property
+    def aliases(self) -> list[str]:
+        return ["tactical", "tact", "боевая", "бой"]
+    
+    @property
+    def description(self) -> str:
+        return 'наложить на картинку облачко говорящего'
+
+    def __init__(self, dp: Dispatcher, bot: Bot) -> None:
         self._bot = bot
 
         dp.message(CommandFilter(self.aliases))(self.handle)

@@ -18,17 +18,25 @@ from aiogram.types import Message
 
 from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_text_from_message
+from bot.handler import Handler
 
 import random
 
 
-class CPHandler:
-    aliases = ["childporn", "cp"]
+class CPHandler(Handler):
+    @property
+    def aliases(self) -> list[str]:
+        return ["cp", "childporn"]
+    
+    @property
+    def description(self) -> str:
+        return 'тупой юмор'
 
     def __init__(self, dp: Dispatcher) -> None:
+        Handler.__init__(self)
         dp.message(CommandFilter(self.aliases))(self.ping)
 
-    async def ping(self, message: Message, args: list[str]) -> None:
+    async def ping(self, message: Message) -> None:
         txt = fetch_text_from_message(message)
         if txt is None:
             await message.answer("дополнительно напишите или перешлите текст")

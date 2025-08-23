@@ -23,6 +23,7 @@ from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.detect_faces import detect_faces
 from bot.utils.pool_executor import executor
+from bot.handler import Handler
 
 import os
 import json
@@ -39,12 +40,19 @@ _BOTTOM_TEXT_FONT_FACTOR = 128 / 573
 _BOTTOM_TEXT_PADDING_TOP = 4
 _WORDS_PER_LINE = 5
 
-class OmonHandler:
-    aliases = ["омон", "omon"]
+class OmonHandler(Handler):
     _bot: Bot
 
     _sentences: list[tuple[str, str]]
     _font_path: str
+
+    @property
+    def aliases(self) -> list[str]:
+        return ["омон", "omon"]
+    
+    @property
+    def description(self) -> str:
+        return 'статьи УК РФ для каждого на картинке'
 
     def __init__(self, dp: Dispatcher, bot: Bot, static_path: str) -> None:
         self._bot = bot

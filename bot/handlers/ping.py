@@ -17,12 +17,19 @@ from aiogram import Dispatcher
 from aiogram.types import Message
 
 from bot.command_filter import CommandFilter
+from bot.handler import Handler
 
-class PingHandler:
-    aliases = ["ping", "пинг"]
+class PingHandler(Handler):
+    @property
+    def aliases(self) -> list[str]:
+        return ["ping", "пинг"]
+    
+    @property
+    def description(self) -> str:
+        return 'проверить работоспособность бота'
 
     def __init__(self, dp: Dispatcher) -> None:
         dp.message(CommandFilter(self.aliases))(self.ping)
 
-    async def ping(self, message: Message, args: list[str]) -> None:
+    async def ping(self, message: Message) -> None:
         await message.answer("понг")
