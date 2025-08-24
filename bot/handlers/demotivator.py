@@ -101,14 +101,10 @@ class DemotivatorHandler(Handler):
         self._bot = bot
         dp.message(CommandFilter(self.aliases))(self.handle)
 
-    async def handle(self, message: Message) -> None:
-        if not message.text:
+    async def handle(self, message: Message, args: list[list[str]]) -> None:
+        if not args:
             return
-        command_regex = re.compile(r'^/([\w\u0400-\u04FF]+)(?:\s+([\s\S]+))?')
-        matched = command_regex.match(message.text)
-        if matched is None:
-            return
-        args = (matched.group(2) or "").splitlines()
+        lines = [' '.join(x) for x in args]
 
         photo = fetch_image_from_message(message)
         if not photo:
@@ -120,7 +116,7 @@ class DemotivatorHandler(Handler):
             await message.answer('не удалось скачать пикчу')
             return
         pic = await asyncio.get_running_loop().run_in_executor(None, stream.read)
-        result = await asyncio.get_running_loop().run_in_executor(executor, _Demotivator.create, pic, args[0], args[1:])
+        result = await asyncio.get_running_loop().run_in_executor(executor, _Demotivator.create, pic, lines[0], lines[1:])
         
         if isinstance(result, bytes):
             await message.answer_photo(

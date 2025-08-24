@@ -87,7 +87,7 @@ class TacticalHandler(Handler):
                 return 'не удалось обработать пикчу'
             return result
 
-    async def handle(self, message: Message, args: list[str]) -> None:
+    async def handle(self, message: Message, args: list[list[str]]) -> None:
         photo = fetch_image_from_message(message)
         if not photo:
             await message.answer("нужно прикрепить пикчу")
@@ -95,8 +95,8 @@ class TacticalHandler(Handler):
 
         face_num = 0
         if len(args) > 0:
-            if args[0].isnumeric():
-                face_num = int(args[0]) - 1
+            if args[0][0].isnumeric():
+                face_num = int(args[0][0]) - 1
             else:
                 await message.answer("напишите номер лица")
                 return

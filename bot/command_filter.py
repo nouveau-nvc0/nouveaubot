@@ -27,9 +27,7 @@ def parse_command(text: str) -> tuple[None, None] | tuple[str, str]:
     mt = PATTERN.match(text)
     if mt:
         cmd = mt.group(1)
-        args = mt.group(2)
-        if not args:
-            args = ""
+        args = mt.group(2) or ""
         return cmd, args
     return None, None
 
@@ -39,14 +37,15 @@ class CommandFilter(Filter):
     def __init__(self, aliases: list[str]) -> None:
         self.aliases = aliases
 
-    async def __call__(self, message: Message) -> bool | dict[str, Any]:
+    async def __call__(self, message: Message) -> bool | dict[str, list[list[str]]]:
         msg = message.text if message.text else message.caption
-        if not msg or msg == "":
-            return False
-        cmd, args = parse_command(msg)
-        if cmd is None or cmd not in self.aliases or args is None:
+        if not msg:
             return False
 
-        # Разделяем аргументы на строки и слова
-        args_list = [line.split() for line in args.splitlines() if line.strip()]
+        cmd, args = parse_command(msg)
+        if cmd is None or cmd not in self.aliases:
+            return False
+
+        # многострочные аргументы → список строк → список слов
+        args_list = [line.split() for line in args.splitlines() if line.strip()] if args is not None else []
         return {"args": args_list}
