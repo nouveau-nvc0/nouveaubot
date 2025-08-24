@@ -15,6 +15,7 @@
 
 from aiogram import Dispatcher, Bot
 from aiogram.types import Message, BufferedInputFile
+from aiogram.enums.parse_mode import ParseMode
 from wand.image import Image
 from wand.drawing import Drawing
 from wand.color import Color
@@ -43,7 +44,7 @@ _WORDS_PER_LINE = 5
 class OmonHandler(Handler):
     _bot: Bot
 
-    _sentences: list[tuple[str, str]]
+    _sentences: dict[str, str]
     _font_path: str
 
     @property
@@ -60,8 +61,8 @@ class OmonHandler(Handler):
         self._font_path = os.path.join(static_path, "LiberationSans-Regular.ttf")
 
         with open(os.path.join(static_path, "sentences.txt"), "r") as f:
-            self._sentences = [(k, self._prepare_sentence(v))
-                              for k, v in json.loads(f.read()).items()]
+            self._sentences = {k: self._prepare_sentence(v)
+                              for k, v in json.loads(f.read()).items()}
 
         dp.message(CommandFilter(self.aliases))(self.handle)
 
@@ -82,12 +83,23 @@ class OmonHandler(Handler):
         return "\n".join(res)
 
     @staticmethod
-    def process_image(img_data: bytes, font_path: str, sentences: list[tuple[str, str]]) -> str | bytes:
+    def process_image(img_data: bytes, font_path: str, sentences: dict[str, str], manual_sentences: list[str]) -> str | bytes:
         faces = detect_faces(img_data)
 
         if len(faces) == 0:
             return "лица не обнаружены"
-        chosen_sentences = random.sample(sentences, len(faces))
+        
+        chosen_sentences: list[tuple[str, str]] = []
+        for i, sentence in enumerate(manual_sentences):
+            if i == len(faces):
+                break
+            try:
+                chosen_sentences.append((sentence, sentences[sentence]))
+            except KeyError:
+                return f'статья {sentence} не найдена'
+
+        if len(chosen_sentences) < len(faces):
+            chosen_sentences += random.sample(list(sentences.items()), len(faces) - len(chosen_sentences))
 
         with Image(blob=img_data) as source:
             source.transform(resize="3072x3072>")
@@ -164,7 +176,7 @@ class OmonHandler(Handler):
                 return 'не удалось обработать пикчу'
             return result
 
-    async def handle(self, message: Message) -> None:
+    async def handle(self, message: Message, args: list[list[str]]) -> None:
         photo = fetch_image_from_message(message)
         if not photo:
             await message.answer("нужно прикрепить пикчу")
@@ -176,7 +188,8 @@ class OmonHandler(Handler):
             return
         
         pic = await asyncio.get_running_loop().run_in_executor(None, stream.read)
-        result = await asyncio.get_running_loop().run_in_executor(executor, self.process_image, pic, self._font_path, self._sentences)
+        result = await asyncio.get_running_loop()\
+            .run_in_executor(executor, self.process_image, pic, self._font_path, self._sentences, args[0])
 
         if isinstance(result, bytes):
             await message.answer_photo(
