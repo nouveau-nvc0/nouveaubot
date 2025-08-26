@@ -21,16 +21,19 @@ from bot.utils.message_data_fetchers import fetch_text_from_message
 from bot.handler import Handler
 
 import random
+import re
+
+PROBABILITY_PERCENT = 5
 
 
 class CPHandler(Handler):
     @property
     def aliases(self) -> list[str]:
         return ["cp", "childporn"]
-    
+
     @property
     def description(self) -> str:
-        return 'тупой юмор'
+        return "тупой юмор"
 
     def __init__(self, dp: Dispatcher) -> None:
         Handler.__init__(self)
@@ -42,7 +45,26 @@ class CPHandler(Handler):
             await message.answer("дополнительно напишите или перешлите текст")
             return
 
-        res = " ".join("CHILD PORN" if random.randrange(100)
-                       < 5 else x for x in txt.split(" "))
+        matches = list(re.finditer(r"[^\s]+", txt))
+        if not matches:
+            await message.answer(txt)
+            return
 
-        await message.answer(res)
+        selected = [random.randrange(100) < PROBABILITY_PERCENT for _ in range(len(matches))]
+        if not any(selected):
+            selected[random.randint(0, len(matches) - 1)] = True
+
+        result = []
+        last = 0
+        for i, m in enumerate(matches):
+            start, end = m.span()
+            result.append(txt[last:start])
+            if selected[i]:
+                result.append("CHILD PORN")
+            else:
+                result.append(m.group())
+            last = end
+        result.append(txt[last:])
+
+        await message.answer("".join(result))
+
