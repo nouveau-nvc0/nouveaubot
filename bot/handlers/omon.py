@@ -15,7 +15,6 @@
 
 from aiogram import Dispatcher, Bot
 from aiogram.types import Message, BufferedInputFile
-from aiogram.enums.parse_mode import ParseMode
 from wand.image import Image
 from wand.drawing import Drawing
 from wand.color import Color
@@ -189,7 +188,7 @@ class OmonHandler(Handler):
         
         pic = await asyncio.get_running_loop().run_in_executor(None, stream.read)
         result = await asyncio.get_running_loop()\
-            .run_in_executor(executor, self.process_image, pic, self._font_path, self._sentences, args[0])
+            .run_in_executor(executor, self.process_image, pic, self._font_path, self._sentences, args[0] if args else [])
 
         if isinstance(result, bytes):
             await message.answer_photo(
