@@ -28,8 +28,13 @@ class Box:
     x2: int
     y2: int
 
-def detect_faces(img_data: bytes) -> list[Box]:
-    nparr = np.frombuffer(img_data, np.uint8)
-    cv2img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    faces = _detector.get(cv2img)
+def detect_faces(img_data: cv2.typing.MatLike | bytes) -> list[Box]:
+    if isinstance(img_data, (bytes, bytearray)):
+        nparr = np.frombuffer(img_data, np.uint8)
+        cv2img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if cv2img is None:
+            return []
+        img_data = cv2img
+
+    faces = _detector.get(img_data)
     return [Box(*face.bbox.astype(int)) for face in faces]

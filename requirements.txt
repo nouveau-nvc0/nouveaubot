@@ -3,3 +3,4 @@ aiogram
 wand
 insightface
 onnxruntime
+PyGObject==3.50.1

@@ -15,9 +15,14 @@
 
 from aiogram import Dispatcher, Bot
 from aiogram.types import Message, BufferedInputFile
-from wand.image import Image
-from wand.drawing import Drawing
-from wand.color import Color
+from aiogram.exceptions import TelegramBadRequest
+import cv2
+import numpy as np
+import cairo
+import gi
+gi.require_version("Pango", "1.0")
+gi.require_version("PangoCairo", "1.0")
+from gi.repository import Pango, PangoCairo
 
 from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
@@ -28,23 +33,22 @@ from bot.handler import Handler
 import os
 import json
 import random
-import math
 import asyncio
 import logging
+import io
+from typing import Callable
 
 _FRAME_WIDTH = 6
-_FONT_CHARACTER_WEIGHT = 1
-_FRAME_TEXT_PADDING_BOTTOM = 3
 _FRAME_TEXT_FONT_SIZE = 16
-_BOTTOM_TEXT_FONT_FACTOR = 128 / 573
-_BOTTOM_TEXT_PADDING_TOP = 4
-_WORDS_PER_LINE = 5
+_BOTTOM_TEXT_FONT_FACTOR = 0.02
+_MAX_DIM = 3072.0
+_MIN_DIM = 512.0
+_FONT_FAMILY = 'Mono'
 
 class OmonHandler(Handler):
     _bot: Bot
 
     _sentences: dict[str, str]
-    _font_path: str
 
     @property
     def aliases(self) -> list[str]:
@@ -57,34 +61,66 @@ class OmonHandler(Handler):
     def __init__(self, dp: Dispatcher, bot: Bot, static_path: str) -> None:
         self._bot = bot
 
-        self._font_path = os.path.join(static_path, "LiberationSans-Regular.ttf")
-
-        with open(os.path.join(static_path, "sentences.txt"), "r") as f:
-            self._sentences = {k: self._prepare_sentence(v)
-                              for k, v in json.loads(f.read()).items()}
+        with open(os.path.join(static_path, "sentences.json"), "r") as f:
+            self._sentences = json.load(f)
 
         dp.message(CommandFilter(self.aliases))(self.handle)
 
     @staticmethod
-    def _prepare_sentence(s: str) -> str:
-        toks = s.split()
-        res = []
-
-        for i in range(math.ceil(len(toks) / _WORDS_PER_LINE)):
-            start = i * _WORDS_PER_LINE
-            end = (i + 1) * _WORDS_PER_LINE
-
-            if len(toks) >= end:
-                res.append(" ".join(toks[start:end]))
-            else:
-                res.append(" ".join(toks[start:]))
-
-        return "\n".join(res)
+    def _layout_for(cr: cairo.Context, text: str, font_family: str, font_size: float, width: int | None = None) -> tuple[Pango.Layout, int, int]:
+        layout = PangoCairo.create_layout(cr)
+        fd = Pango.FontDescription()
+        if font_family:
+            fd.set_family(font_family)
+        fd.set_size(font_size * Pango.SCALE)
+        layout.set_font_description(fd)
+        layout.set_markup(text, -1)
+        if width is not None and width > 0:
+            layout.set_width(width * Pango.SCALE)
+            layout.set_wrap(Pango.WrapMode.WORD_CHAR)
+            pass
+        w, h = layout.get_pixel_size()
+        return layout, w, h
 
     @staticmethod
-    def process_image(img_data: bytes, font_path: str, sentences: dict[str, str], manual_sentences: list[str]) -> str | bytes:
-        faces = detect_faces(img_data)
+    def _image_surface_from_cv2_img(cv2img: cv2.typing.MatLike) -> tuple[cairo.ImageSurface, int, int]:
+        h, w = cv2img.shape[:2]
 
+        if cv2img.shape[2] == 3:
+            cv2img = cv2.cvtColor(cv2img, cv2.COLOR_BGR2BGRA)
+
+        if not cv2img.flags["C_CONTIGUOUS"]:
+            cv2img = cv2img.copy()
+
+        stride = w * 4
+        data = cv2img.tobytes()
+
+        return cairo.ImageSurface.create_for_data(
+            bytearray(data),
+            cairo.FORMAT_ARGB32,
+            w,
+            h,
+            stride,
+        ), w, h
+    
+    @staticmethod
+    def _scale_dims(orig_w: int, orig_h: int):
+        max_dim = max(orig_w, orig_h)
+        min_dim = min(orig_w, orig_h)
+        scale = 1.0
+        if max_dim > _MAX_DIM:
+            scale *= _MAX_DIM / max_dim
+        if min_dim * scale < _MIN_DIM:
+            scale *= _MIN_DIM / (min_dim * scale)
+        return scale
+
+    @staticmethod
+    def process_image(img_data: bytes, sentences: dict[str, str], manual_sentences: list[str]) -> str | bytes:
+        nparr = np.frombuffer(img_data, np.uint8)
+        cv2img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if cv2img is None:
+            return 'не удалось обработать изображение'
+        faces = detect_faces(cv2img)
         if len(faces) == 0:
             return "лица не обнаружены"
         
@@ -100,80 +136,94 @@ class OmonHandler(Handler):
         if len(chosen_sentences) < len(faces):
             chosen_sentences += random.sample(list(sentences.items()), len(faces) - len(chosen_sentences))
 
-        with Image(blob=img_data) as source:
-            source.transform(resize="3072x3072>")
-            source.transform(resize="512x512<")
+        src_surf, orig_w, orig_h = OmonHandler._image_surface_from_cv2_img(cv2img)
+    
+        scale = OmonHandler._scale_dims(orig_w, orig_h)
+        scaled_w = max(1, int(orig_w * scale))
+        scaled_h = max(1, int(orig_h * scale))
 
-            with Drawing() as draw:
-                for i, f in enumerate(faces):
-                    txt = "Статья " + chosen_sentences[i][0]
+        # рабочая поверхность: рисуем отмасштабированное изображение на ней
+        work_surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, scaled_w, scaled_h)
+        work_cr = cairo.Context(work_surf)
+        work_cr.save()
+        work_cr.scale(scale, scale)
+        work_cr.set_source_surface(src_surf, 0, 0)
+        work_cr.paint()
+        work_cr.restore()
 
-                    draw.stroke_width = _FRAME_WIDTH
-                    draw.stroke_color = Color("green")
-                    draw.fill_color = Color("black")
-                    draw.font = font_path
-                    draw.fill_opacity = 0x00
-                    draw.font_size = _FRAME_TEXT_FONT_SIZE
+        label_draws: list[Callable[[], None]] = []
 
-                    # рамка вокруг лица
-                    points = [(f.x1, f.y1), (f.x2, f.y1), (f.x2, f.y2), (f.x1, f.y2)]
-                    draw.polygon(points)
+        # Рисуем рамки и верхний текст для каждого лица
+        for i, f in enumerate(faces):
+            x1 = int(f.x1 * scale); y1 = int(f.y1 * scale)
+            x2 = int(f.x2 * scale); y2 = int(f.y2 * scale)
+            base_y = max(y1 - _FRAME_WIDTH, 0) + _FRAME_WIDTH // 2
+            base_x = x2 + _FRAME_WIDTH // 2
 
-                    metrics = draw.get_font_metrics(source, txt)
+            # рамка
+            work_cr.set_line_width(_FRAME_WIDTH)
+            work_cr.set_source_rgb(0, 1.0, 0)
+            work_cr.rectangle(x1, y1, x2 - x1, y2 - y1)
+            work_cr.stroke()
 
-                    draw.stroke_color = Color("black")
-                    draw.fill_opacity = 0xFF
+            txt = "Статья " + chosen_sentences[i][0]
+            layout_real, metrics_w, metrics_h = OmonHandler._layout_for(work_cr, txt, _FONT_FAMILY, _FRAME_TEXT_FONT_SIZE)
 
-                    # фон под текстом сверху
-                    top_y = max(f.y1 - metrics.text_height - _FRAME_WIDTH, 0)
-                    base_y = max(f.y1 - _FRAME_WIDTH, 0)
-                    points = [
-                        (f.x1, base_y),
-                        (f.x1 + metrics.text_width, base_y),
-                        (f.x1 + metrics.text_width, top_y),
-                        (f.x1, top_y)
-                    ]
-                    draw.polygon(points)
+            def draw_label(base_x=base_x, base_y=base_y, layout=layout_real, w=metrics_w, h=metrics_h):
+                work_cr.save()
+                work_cr.rectangle(base_x, base_y, w, h)
+                work_cr.set_source_rgb(0, 0, 0)
+                work_cr.fill()
+                work_cr.restore()
 
-                    # сам текст
-                    draw.stroke_color = Color("green")
-                    draw.fill_color = Color("green")
-                    draw.stroke_width = _FONT_CHARACTER_WEIGHT
-                    text_y = max(f.y1 - _FRAME_WIDTH - _FRAME_TEXT_PADDING_BOTTOM, 0)
-                    text_x = max(int(f.x1), 0)
-                    draw.text(text_x, text_y, txt)
+                work_cr.save()
+                work_cr.translate(base_x, base_y)
+                PangoCairo.update_layout(work_cr, layout)
+                work_cr.set_source_rgb(0, 1, 0)
+                PangoCairo.show_layout(work_cr, layout)
+                work_cr.restore()
 
-                draw(source)
+            label_draws.append(draw_label)
 
-            # нижняя подпись с перечислением статей
-            with Drawing() as draw:
-                draw.font = font_path
-                draw.font_size = int(_BOTTOM_TEXT_FONT_FACTOR * source.width)
-                draw.stroke_color = Color("green")
-                draw.fill_color = Color("green")
+        for f in label_draws:
+            f()
 
-                txt = "\n".join("Статья {}. {}".format(x, y)
-                                for (x, y) in chosen_sentences)
-                metrics = draw.get_font_metrics(source, txt, multiline=True)
+        # Нижний блок с перечислением статей, сразу нужной ширины
+        bottom_txt = "\n".join("Статья {}. {}".format(x, y) for (x, y) in chosen_sentences)
+        bottom_font_size = _BOTTOM_TEXT_FONT_FACTOR * scaled_w
 
-                with Image(width=int(metrics.text_width + _BOTTOM_TEXT_PADDING_TOP),
-                           height=int(metrics.text_height),
-                           background=Color("black")) as appendix:
-                    draw.text(0, int(metrics.y2 + _BOTTOM_TEXT_PADDING_TOP), txt)
-                    draw(appendix)
+        appendix_w = scaled_w
+        tmp_surf2 = cairo.ImageSurface(cairo.FORMAT_ARGB32, appendix_w, 1)
+        tmp_cr2 = cairo.Context(tmp_surf2)
+        layout_bottom, _, bottom_h = OmonHandler._layout_for(tmp_cr2, bottom_txt, _FONT_FAMILY, bottom_font_size, width=appendix_w)
 
-                    appendix.resize(source.width,
-                                    int(metrics.text_height *
-                                        (source.width / metrics.text_width)))
-                    source.extent(source.width,
-                                  source.height + appendix.height)
-                    source.composite(
-                        appendix, 0, source.height - appendix.height)
-            result = source.make_blob("jpeg")
-            if not isinstance(result, bytes):
-                logging.error(f'Unexcepted make_blob() result: {result}')
-                return 'не удалось обработать пикчу'
-            return result
+        appendix_h = max(1, bottom_h)
+        appendix = cairo.ImageSurface(cairo.FORMAT_ARGB32, appendix_w, appendix_h)
+        ac = cairo.Context(appendix)
+        ac.set_source_rgb(0, 0, 0)
+        ac.rectangle(0, 0, appendix_w, appendix_h)
+        ac.fill()
+
+        ac.save()
+        ac.translate(0, 0)
+        PangoCairo.update_layout(ac, layout_bottom)
+        ac.set_source_rgb(0, 1, 0)
+        PangoCairo.show_layout(ac, layout_bottom)
+        ac.restore()
+
+        # Финальная поверхность
+        final_w = scaled_w
+        final_h = scaled_h + appendix_h
+        final_surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, final_w, final_h)
+        fcr = cairo.Context(final_surf)
+        fcr.set_source_surface(work_surf, 0, 0)
+        fcr.paint()
+        fcr.set_source_surface(appendix, 0, scaled_h)
+        fcr.paint()
+
+        out = io.BytesIO()
+        final_surf.write_to_png(out)
+        return out.getvalue()
 
     async def handle(self, message: Message, args: list[list[str]]) -> None:
         photo = fetch_image_from_message(message)
@@ -188,15 +238,23 @@ class OmonHandler(Handler):
         
         pic = await asyncio.get_running_loop().run_in_executor(None, stream.read)
         result = await asyncio.get_running_loop()\
-            .run_in_executor(executor, self.process_image, pic, self._font_path, self._sentences, args[0] if args else [])
+            .run_in_executor(executor, self.process_image, pic, self._sentences, args[0] if args else [])
 
         if isinstance(result, bytes):
-            await message.answer_photo(
-                    BufferedInputFile(result, "default"),
+            buffered = BufferedInputFile(result, "image.png")
+            try:
+                await message.answer_photo(
+                    buffered,
                     caption="ваша пикча"
+                )
+            except TelegramBadRequest as e:
+                await message.answer_document(
+                    buffered,
+                    caption="ваша пикча (отправлено как файл: фото не устроило Telegram)"
                 )
         elif isinstance(result, str):
             await message.answer(result)
         else:
             logging.error(f'Unexcepted process_image() result: {result}')
             await message.answer('не удалось обработать пикчу')
+
