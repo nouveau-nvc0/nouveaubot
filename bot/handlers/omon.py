@@ -15,11 +15,11 @@
 
 from aiogram import Dispatcher, Bot
 from aiogram.types import Message, BufferedInputFile
-from aiogram.exceptions import TelegramBadRequest
 import cv2
 import numpy as np
 import cairo
 import gi
+
 gi.require_version("Pango", "1.0")
 gi.require_version("PangoCairo", "1.0")
 from gi.repository import Pango, PangoCairo
@@ -28,6 +28,7 @@ from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.detect_faces import detect_faces
 from bot.utils.pool_executor import executor
+from bot.utils.scale_for_tg import scale_for_tg
 from bot.handler import Handler
 
 import os
@@ -41,7 +42,6 @@ from typing import Callable
 _FRAME_WIDTH = 6
 _FRAME_TEXT_FONT_SIZE = 16
 _BOTTOM_TEXT_FONT_FACTOR = 0.02
-_MAX_DIM = 3072.0
 _MIN_DIM = 512.0
 _FONT_FAMILY = 'Mono'
 
@@ -105,11 +105,8 @@ class OmonHandler(Handler):
     
     @staticmethod
     def _scale_dims(orig_w: int, orig_h: int):
-        max_dim = max(orig_w, orig_h)
         min_dim = min(orig_w, orig_h)
         scale = 1.0
-        if max_dim > _MAX_DIM:
-            scale *= _MAX_DIM / max_dim
         if min_dim * scale < _MIN_DIM:
             scale *= _MIN_DIM / (min_dim * scale)
         return scale
@@ -211,7 +208,6 @@ class OmonHandler(Handler):
         PangoCairo.show_layout(ac, layout_bottom)
         ac.restore()
 
-        # Финальная поверхность
         final_w = scaled_w
         final_h = scaled_h + appendix_h
         final_surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, final_w, final_h)
@@ -221,8 +217,10 @@ class OmonHandler(Handler):
         fcr.set_source_surface(appendix, 0, scaled_h)
         fcr.paint()
 
+        result = scale_for_tg(final_surf)
+
         out = io.BytesIO()
-        final_surf.write_to_png(out)
+        result.write_to_png(out)
         return out.getvalue()
 
     async def handle(self, message: Message, args: list[list[str]]) -> None:
@@ -242,16 +240,10 @@ class OmonHandler(Handler):
 
         if isinstance(result, bytes):
             buffered = BufferedInputFile(result, "image.png")
-            try:
-                await message.answer_photo(
-                    buffered,
-                    caption="ваша пикча"
-                )
-            except TelegramBadRequest as e:
-                await message.answer_document(
-                    buffered,
-                    caption="ваша пикча (отправлено как файл: фото не устроило Telegram)"
-                )
+            await message.answer_photo(
+                buffered,
+                caption="ваша пикча"
+            )
         elif isinstance(result, str):
             await message.answer(result)
         else:
