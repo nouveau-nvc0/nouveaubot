@@ -32,7 +32,7 @@ import logging
 
 _BUBBLE_DOT1 = 12 / 17
 _BUBBLE_DOT2 = 16 / 17
-_LINE_WIDTH_K = 2 / 262_144
+_LINE_WIDTH_K = 6 / 512
 _BUBBLE_HEIGHT_K = 0.1
 
 
@@ -70,19 +70,19 @@ class TacticalHandler(Handler):
         img_surf, scale = scale_dims(src_surf)
         img_w, img_h = img_surf.get_width(), img_surf.get_height()
         
-        line_width = _LINE_WIDTH_K * img_w * img_h
+        line_width = _LINE_WIDTH_K * ((img_w * img_h) ** 0.5)
         face_width = faces[face_num].x2 - faces[face_num].x1
 
-        def draw_triangle(cr: cairo.Context, x1=img_w * _BUBBLE_DOT1, y1=0.0,
+        def draw_triangle(cr: cairo.Context, x1=img_w * _BUBBLE_DOT1, y1=line_width * 0.5,
                           x2=(faces[face_num].x1 + face_width * 0.5) * scale, y2=faces[face_num].y1 * scale,
-                          x3=img_w * _BUBBLE_DOT2, y3=0.0) -> None:
+                          x3=img_w * _BUBBLE_DOT2, y3=line_width * 0.5) -> None:
             cr.line_to(x1, y1)
             cr.line_to(x2, y2)
             cr.line_to(x3, y3)
 
         fill_cr = cairo.Context(img_surf)
         fill_cr.set_source_rgb(1, 1, 1) # white
-        draw_triangle(fill_cr)
+        draw_triangle(fill_cr, y1=0.0, y3=0.0)
         fill_cr.close_path()
         fill_cr.fill()
 
@@ -90,7 +90,7 @@ class TacticalHandler(Handler):
         stroke_cr.set_line_width(line_width)
         stroke_cr.set_source_rgb(0, 0, 0) # black
         stroke_cr.line_to(0.0, line_width * 0.5)
-        draw_triangle(stroke_cr, y1=line_width * 0.5, y2=line_width * 0.5)
+        draw_triangle(stroke_cr)
         stroke_cr.line_to(img_w, line_width * 0.5)
         stroke_cr.stroke()
 
