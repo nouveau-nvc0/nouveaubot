@@ -17,11 +17,16 @@ import logging
 import re
 from math import floor, ceil
 import asyncio
+import io
 
-from wand.color import Color
-from wand.drawing import Drawing
-from wand.font import Font
-from wand.image import Image
+import cv2
+import numpy as np
+import cairo
+import gi
+
+gi.require_version("Pango", "1.0")
+gi.require_version("PangoCairo", "1.0")
+from gi.repository import Pango, PangoCairo
 
 from aiogram import Dispatcher, Bot
 from aiogram.types import Message, BufferedInputFile
@@ -30,60 +35,113 @@ from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.pool_executor import executor
 from bot.handler import Handler
+from bot.utils.cairo_helpers import scale_for_tg, image_surface_from_cv2_img, layout_text
+
 
 class _Demotivator:
     _BIG_FONT_SIZE = 0.052
     _SM_FONT_SIZE = 0.036
-
-    @staticmethod
-    def _dem_text(img: Image, txt: str, font_k: float, font: str) -> Image:
-        dem = Image(width=floor(img.width * 1.1), height=1000)
-        dem.options['gravity'] = 'center'
-        dem.options['pango:wrap'] = 'word-char'
-        dem.options['trim:edges'] = 'south'
-        dem.font = Font(font)
-        dem.font_size = floor(font_k * dem.width)
-        dem.font_color = '#ffffff'
-        dem.background_color = Color('black')
-        dem.pseudo(dem.width, dem.height, pseudo=f'pango:{txt}')
-        dem.trim(color=Color('black'))
-        return dem
+    _MIN_IMG_W = 512
 
     @staticmethod
     def create(img_data: bytes, _text1: str, _text2: list[str]) -> bytes | str:
+        # sanitize
         text1 = re.sub(r'[<>]', '', _text1)
         text2 = re.sub(r'[<>]', '', r'\n'.join(_text2))
-        draw = Drawing()
-        draw.stroke_color = Color('white')
-        img = Image(blob=img_data)
-        img.transform(resize='1500x1500>')
-        img.transform(resize='300x300<')
 
-        dem1 = _Demotivator._dem_text(img, text1, _Demotivator._BIG_FONT_SIZE, 'serif')
-        dem2 = _Demotivator._dem_text(img, text2, _Demotivator._SM_FONT_SIZE, 'sans')
+        # decode via OpenCV
+        nparr = np.frombuffer(img_data, np.uint8)
+        cv2img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if cv2img is None:
+            return "не удалось обработать изображение"
 
-        output = Image(width=dem1.width,
-                       height=dem1.height + dem2.height + img.height + floor(0.12 * img.width),
-                       background=Color('black'))
-        img_left = floor(0.05 * img.width)
-        img_top = floor(0.05 * img.width)
-        draw.stroke_width = ceil(img.width / 500)
-        k = draw.stroke_width * 4
-        draw.polygon([(img_left - k, img_top - k),
-                      (img_left + img.width + k, img_top - k),
-                      (img_left + img.width + k, img_top + img.height + k),
-                      (img_left - k, img_top + img.height + k)])  # Square polygon around image
-        draw(output)
-        output.composite(image=img, left=img_left, top=img_top)
-        img_height = floor(0.07 * img.width + img.height)
-        output.composite(image=dem1, left=0, top=img_height)
-        output.composite(image=dem2, left=0, top=img_height + dem1.height)
+        # scale input to at least 512 px width (height free)
+        h0, w0 = cv2img.shape[:2]
+        if w0 < _Demotivator._MIN_IMG_W:
+            scale = _Demotivator._MIN_IMG_W / float(w0)
+            new_w = _Demotivator._MIN_IMG_W
+            new_h = max(1, int(round(h0 * scale)))
+            cv2img = cv2.resize(cv2img, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+        # limit insane huge inputs a bit (optional, but keep aspect). Not requested to limit; leave as-is otherwise.
+
+        # convert to cairo surface
+        img_surf, img_w, img_h = image_surface_from_cv2_img(cv2img)
+
+        # output width = floor(img.width * 1.1)
+        out_w = floor(img_w * 1.1)
+        # paddings and frame params per original
+        img_left = floor(0.05 * img_w)
+        img_top = floor(0.05 * img_w)
+        stroke_width = max(1, ceil(img_w / 500))
+        k = stroke_width * 4  # expansion around image for frame polygon
+
+        # prepare text layouts to get heights
+        # big line
+        tmp1 = cairo.ImageSurface(cairo.FORMAT_ARGB32, out_w, 1)
+        cr1 = cairo.Context(tmp1)
+        big_font_px = _Demotivator._BIG_FONT_SIZE * out_w
+        layout1, big_w, big_h = layout_text(cr1, text1, "serif", big_font_px, width=out_w, alignment=Pango.Alignment.CENTER)
         
-        result = output.make_blob("jpeg")
-        if not isinstance(result, bytes):
-            logging.error(f'Unexcepted make_blob() result: {result}')
-            return 'не удалось обработать пикчу'
-        return result
+        # small block
+        sm_h = 0
+        layout2: Pango.Layout | None = None
+        if text2:
+            tmp2 = cairo.ImageSurface(cairo.FORMAT_ARGB32, out_w, 1)
+            cr2 = cairo.Context(tmp2)
+            sm_font_px = _Demotivator._SM_FONT_SIZE * out_w
+            layout2, sm_w, sm_h = layout_text(cr2, text2, "sans", sm_font_px, width=out_w, alignment=Pango.Alignment.CENTER)
+
+        # compute total height:
+        # dem1.height + dem2.height + img.height + floor(0.12 * img.width)
+        spacer = floor(0.12 * img_w)
+        out_h = (big_h + sm_h + img_h + spacer)
+        out = cairo.ImageSurface(cairo.FORMAT_ARGB32, out_w, out_h)
+        cr = cairo.Context(out)
+
+        # black background
+        cr.set_source_rgb(0, 0, 0)
+        cr.paint()
+
+        # white frame polygon (around image with expansion k)
+        cr.save()
+        cr.set_source_rgb(1, 1, 1)
+        cr.set_line_width(stroke_width)
+        cr.rectangle(img_left - k, img_top - k, img_w + 2 * k, img_h + 2 * k)
+        cr.stroke()
+        cr.restore()
+
+        # draw image
+        cr.save()
+        cr.set_source_surface(img_surf, img_left, img_top)
+        cr.paint()
+        cr.restore()
+
+        # y start for dem1 (original: floor(0.07 * img.width + img.height))
+        img_height_top = floor(0.07 * img_w + img_h)
+
+        # render big line (white, centered)
+        cr.save()
+        cr.set_source_rgb(1, 1, 1)
+        cr.translate(0, img_height_top)
+        PangoCairo.update_layout(cr, layout1)
+        PangoCairo.show_layout(cr, layout1)
+        cr.restore()
+
+        # render small block
+        cr.save()
+        cr.set_source_rgb(1, 1, 1)
+        cr.translate(0, img_height_top + big_h)
+        if layout2 is not None:
+            PangoCairo.update_layout(cr, layout2)
+            PangoCairo.show_layout(cr, layout2)
+        cr.restore()
+
+        # final scale/letterbox for Telegram by helper
+        final_surf = scale_for_tg(out)
+
+        buf = io.BytesIO()
+        final_surf.write_to_png(buf)
+        return buf.getvalue()
 
 
 class DemotivatorHandler(Handler):
@@ -92,11 +150,11 @@ class DemotivatorHandler(Handler):
     @property
     def aliases(self) -> list[str]:
         return ["dem", "дем"]
-    
+
     @property
     def description(self) -> str:
-        return 'сгенерировать демотиватор. разделитель - перенос строки'
-    
+        return "сгенерировать демотиватор. разделитель - перенос строки"
+
     def __init__(self, dp: Dispatcher, bot: Bot) -> None:
         self._bot = bot
         dp.message(CommandFilter(self.aliases))(self.handle)
@@ -113,18 +171,19 @@ class DemotivatorHandler(Handler):
 
         stream = await self._bot.download(photo)
         if not stream:
-            await message.answer('не удалось скачать пикчу')
+            await message.answer("не удалось скачать пикчу")
             return
+
         pic = await asyncio.get_running_loop().run_in_executor(None, stream.read)
         result = await asyncio.get_running_loop().run_in_executor(executor, _Demotivator.create, pic, lines[0], lines[1:])
-        
+
         if isinstance(result, bytes):
             await message.answer_photo(
-                    BufferedInputFile(result, "default"),
-                    caption="ваша пикча"
-                )
+                BufferedInputFile(result, "image.png"),
+                caption="ваша пикча",
+            )
         elif isinstance(result, str):
             await message.answer(result)
         else:
-            logging.error(f'Unexcepted _Demotivator.create() result: {result}')
-            await message.answer('не удалось обработать пикчу')
+            logging.error(f"Unexcepted _Demotivator.create() result: {result}")
+            await message.answer("не удалось обработать пикчу")

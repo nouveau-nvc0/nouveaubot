@@ -20,15 +20,17 @@ import numpy as np
 import cairo
 import gi
 
+
 gi.require_version("Pango", "1.0")
 gi.require_version("PangoCairo", "1.0")
-from gi.repository import Pango, PangoCairo
+from gi.repository import PangoCairo
+from gi.repository import Pango
 
 from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.detect_faces import detect_faces
 from bot.utils.pool_executor import executor
-from bot.utils.scale_for_tg import scale_for_tg
+from bot.utils.cairo_helpers import scale_for_tg, layout_text, image_surface_from_cv2_img
 from bot.handler import Handler
 
 import os
@@ -65,43 +67,6 @@ class OmonHandler(Handler):
             self._sentences = json.load(f)
 
         dp.message(CommandFilter(self.aliases))(self.handle)
-
-    @staticmethod
-    def _layout_for(cr: cairo.Context, text: str, font_family: str, font_size: float, width: int | None = None) -> tuple[Pango.Layout, int, int]:
-        layout = PangoCairo.create_layout(cr)
-        fd = Pango.FontDescription()
-        if font_family:
-            fd.set_family(font_family)
-        fd.set_size(font_size * Pango.SCALE)
-        layout.set_font_description(fd)
-        layout.set_markup(text, -1)
-        if width is not None and width > 0:
-            layout.set_width(width * Pango.SCALE)
-            layout.set_wrap(Pango.WrapMode.WORD_CHAR)
-            pass
-        w, h = layout.get_pixel_size()
-        return layout, w, h
-
-    @staticmethod
-    def _image_surface_from_cv2_img(cv2img: cv2.typing.MatLike) -> tuple[cairo.ImageSurface, int, int]:
-        h, w = cv2img.shape[:2]
-
-        if cv2img.shape[2] == 3:
-            cv2img = cv2.cvtColor(cv2img, cv2.COLOR_BGR2BGRA)
-
-        if not cv2img.flags["C_CONTIGUOUS"]:
-            cv2img = cv2img.copy()
-
-        stride = w * 4
-        data = cv2img.tobytes()
-
-        return cairo.ImageSurface.create_for_data(
-            bytearray(data),
-            cairo.FORMAT_ARGB32,
-            w,
-            h,
-            stride,
-        ), w, h
     
     @staticmethod
     def _scale_dims(orig_w: int, orig_h: int):
@@ -133,7 +98,7 @@ class OmonHandler(Handler):
         if len(chosen_sentences) < len(faces):
             chosen_sentences += random.sample(list(sentences.items()), len(faces) - len(chosen_sentences))
 
-        src_surf, orig_w, orig_h = OmonHandler._image_surface_from_cv2_img(cv2img)
+        src_surf, orig_w, orig_h = image_surface_from_cv2_img(cv2img)
     
         scale = OmonHandler._scale_dims(orig_w, orig_h)
         scaled_w = max(1, int(orig_w * scale))
@@ -164,7 +129,7 @@ class OmonHandler(Handler):
             work_cr.stroke()
 
             txt = "Статья " + chosen_sentences[i][0]
-            layout_real, metrics_w, metrics_h = OmonHandler._layout_for(work_cr, txt, _FONT_FAMILY, _FRAME_TEXT_FONT_SIZE)
+            layout_real, metrics_w, metrics_h = layout_text(work_cr, txt, _FONT_FAMILY, _FRAME_TEXT_FONT_SIZE)
 
             def draw_label(base_x=base_x, base_y=base_y, layout=layout_real, w=metrics_w, h=metrics_h):
                 work_cr.save()
@@ -192,7 +157,7 @@ class OmonHandler(Handler):
         appendix_w = scaled_w
         tmp_surf2 = cairo.ImageSurface(cairo.FORMAT_ARGB32, appendix_w, 1)
         tmp_cr2 = cairo.Context(tmp_surf2)
-        layout_bottom, _, bottom_h = OmonHandler._layout_for(tmp_cr2, bottom_txt, _FONT_FAMILY, bottom_font_size, width=appendix_w)
+        layout_bottom, _, bottom_h = layout_text(tmp_cr2, bottom_txt, _FONT_FAMILY, bottom_font_size, width=appendix_w)
 
         appendix_h = max(1, bottom_h)
         appendix = cairo.ImageSurface(cairo.FORMAT_ARGB32, appendix_w, appendix_h)

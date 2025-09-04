@@ -14,6 +14,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import cairo
+import cv2
+import numpy as np
+
+import gi
+gi.require_version("Pango", "1.0")
+gi.require_version("PangoCairo", "1.0")
+from gi.repository import Pango, PangoCairo
+
 import math
 
 _MAX_DIM_SUM = 10_000
@@ -92,3 +100,38 @@ def scale_for_tg(surface: cairo.ImageSurface) -> cairo.ImageSurface:
     surface = _fix_ratio_if_needed(surface)
     surface = _fix_dim_sum_if_needed(surface)
     return surface
+
+
+def image_surface_from_cv2_img(cv2img: cv2.typing.MatLike) -> tuple[cairo.ImageSurface, int, int]:
+    if cv2img is None:
+        raise ValueError("cv2img is None")
+    if len(cv2img.shape) == 2:
+        cv2img = cv2.cvtColor(cv2img, cv2.COLOR_GRAY2BGRA)
+    elif cv2img.shape[2] == 3:
+        cv2img = cv2.cvtColor(cv2img, cv2.COLOR_BGR2BGRA)
+    elif cv2img.shape[2] == 4:
+        pass
+    else:
+        raise ValueError("Unsupported image format")
+    h, w = cv2img.shape[:2]
+    if not cv2img.flags["C_CONTIGUOUS"]:
+        cv2img = cv2img.copy()
+    stride = w * 4
+    data = cv2img.tobytes()
+    surf = cairo.ImageSurface.create_for_data(bytearray(data), cairo.FORMAT_ARGB32, w, h, stride)
+    return surf, w, h
+
+def layout_text(cr: cairo.Context, text: str, font_family: str, font_size: float, width: int | None = None, alignment: int = Pango.Alignment.LEFT) -> tuple[Pango.Layout, int, int]:
+    layout = PangoCairo.create_layout(cr)
+    fd = Pango.FontDescription()
+    if font_family:
+        fd.set_family(font_family)
+    fd.set_size(int(font_size * Pango.SCALE))
+    layout.set_font_description(fd)
+    layout.set_text(text, -1)
+    layout.set_alignment(alignment)
+    if width is not None and width > 0:
+        layout.set_width(width * Pango.SCALE)
+        layout.set_wrap(Pango.WrapMode.WORD_CHAR)
+    w, h = layout.get_pixel_size()
+    return layout, w, h
