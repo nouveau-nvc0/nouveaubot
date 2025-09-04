@@ -13,13 +13,15 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import io
 from aiogram import Dispatcher, Bot
 from aiogram.types import Message, BufferedInputFile
-from wand.image import Image
-from wand.drawing import Drawing
-from wand.color import Color
+import cairo
+import cv2
+import numpy as np
 
 from bot.command_filter import CommandFilter
+from bot.utils.cairo_helpers import image_surface_from_cv2_img, scale_dims, scale_for_tg
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.detect_faces import detect_faces
 from bot.utils.pool_executor import executor
@@ -28,10 +30,10 @@ from bot.handler import Handler
 import asyncio
 import logging
 
-_BUBBLE_HEIGHT = 260
-_BUBBLE_WIDTH = 2048
 _BUBBLE_DOT1 = 12 / 17
 _BUBBLE_DOT2 = 16 / 17
+_LINE_WIDTH_K = 2 / 262_144
+_BUBBLE_HEIGHT_K = 0.1
 
 
 class TacticalHandler(Handler):
@@ -52,40 +54,63 @@ class TacticalHandler(Handler):
 
     @staticmethod
     def process_image(img_data: bytes, face_num: int) -> bytes | str:
-        faces = detect_faces(img_data)
+        nparr = np.frombuffer(img_data, np.uint8)
+        cv2img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if cv2img is None:
+            return "не удалось обработать изображение"
+        
+        faces = detect_faces(cv2img)
 
         if len(faces) == 0:
             return "лица не обнаружены"
         if len(faces) < face_num + 1:
             return "такого лица нет"
+        
+        src_surf = image_surface_from_cv2_img(cv2img)
+        img_surf, scale = scale_dims(src_surf)
+        img_w, img_h = img_surf.get_width(), img_surf.get_height()
+        
+        line_width = _LINE_WIDTH_K * img_w * img_h
+        face_width = faces[face_num].x2 - faces[face_num].x1
 
-        with Image(blob=img_data) as source:
-            source_width, source_height = source.size
-            ratio = source_width / _BUBBLE_WIDTH
-            bubble_height = _BUBBLE_HEIGHT * ratio
+        def draw_triangle(cr: cairo.Context, x1=img_w * _BUBBLE_DOT1, y1=0.0,
+                          x2=(faces[face_num].x1 + face_width * 0.5) * scale, y2=faces[face_num].y1 * scale,
+                          x3=img_w * _BUBBLE_DOT2, y3=0.0) -> None:
+            cr.line_to(x1, y1)
+            cr.line_to(x2, y2)
+            cr.line_to(x3, y3)
 
-            source.extent(source_width, int(
-                source_height+bubble_height),
-                0, int(_BUBBLE_HEIGHT * ratio) * -1)
+        fill_cr = cairo.Context(img_surf)
+        fill_cr.set_source_rgb(1, 1, 1) # white
+        draw_triangle(fill_cr)
+        fill_cr.close_path()
+        fill_cr.fill()
 
-            with Drawing() as draw:
-                draw.fill_color = Color("white")
-                face_width = faces[face_num].x2 - faces[face_num].x1
-                points = [
-                    (source_width * _BUBBLE_DOT1, bubble_height - 1),
-                    (source_width * _BUBBLE_DOT2, bubble_height - 1),
-                    (faces[face_num].x1 + face_width * 0.5,
-                     faces[face_num].y1 + bubble_height)
-                ]
+        stroke_cr = cairo.Context(img_surf)
+        stroke_cr.set_line_width(line_width)
+        stroke_cr.set_source_rgb(0, 0, 0) # black
+        stroke_cr.line_to(0.0, line_width * 0.5)
+        draw_triangle(stroke_cr, y1=line_width * 0.5, y2=line_width * 0.5)
+        stroke_cr.line_to(img_w, line_width * 0.5)
+        stroke_cr.stroke()
 
-                draw.polygon(points)
-                draw(source)
+        bubble_h = int(_BUBBLE_HEIGHT_K * img_h)
+        out_surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, img_w, img_h + bubble_h)
+        cr = cairo.Context(out_surf)
 
-            result = source.make_blob("jpeg")
-            if not isinstance(result, bytes):
-                logging.error(f'Unexcepted make_blob() result: {result}')
-                return 'не удалось обработать пикчу'
-            return result
+        # полоса
+        cr.set_source_rgb(1, 1, 1)
+        cr.rectangle(0, 0, img_w, bubble_h)
+        cr.fill()
+
+        # исходное изображение ниже полосы
+        cr.set_source_surface(img_surf, 0, bubble_h)
+        cr.paint()
+
+        final_surf = scale_for_tg(out_surf)
+        buf = io.BytesIO()
+        final_surf.write_to_png(buf)
+        return buf.getvalue()
 
     async def handle(self, message: Message, args: list[list[str]]) -> None:
         photo = fetch_image_from_message(message)

@@ -30,7 +30,7 @@ from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.detect_faces import detect_faces
 from bot.utils.pool_executor import executor
-from bot.utils.cairo_helpers import scale_for_tg, layout_text, image_surface_from_cv2_img
+from bot.utils.cairo_helpers import scale_dims, scale_for_tg, layout_text, image_surface_from_cv2_img
 from bot.handler import Handler
 
 import os
@@ -67,14 +67,6 @@ class OmonHandler(Handler):
             self._sentences = json.load(f)
 
         dp.message(CommandFilter(self.aliases))(self.handle)
-    
-    @staticmethod
-    def _scale_dims(orig_w: int, orig_h: int):
-        min_dim = min(orig_w, orig_h)
-        scale = 1.0
-        if min_dim * scale < _MIN_DIM:
-            scale *= _MIN_DIM / (min_dim * scale)
-        return scale
 
     @staticmethod
     def process_image(img_data: bytes, sentences: dict[str, str], manual_sentences: list[str]) -> str | bytes:
@@ -98,20 +90,10 @@ class OmonHandler(Handler):
         if len(chosen_sentences) < len(faces):
             chosen_sentences += random.sample(list(sentences.items()), len(faces) - len(chosen_sentences))
 
-        src_surf, orig_w, orig_h = image_surface_from_cv2_img(cv2img)
-    
-        scale = OmonHandler._scale_dims(orig_w, orig_h)
-        scaled_w = max(1, int(orig_w * scale))
-        scaled_h = max(1, int(orig_h * scale))
-
-        # рабочая поверхность: рисуем отмасштабированное изображение на ней
-        work_surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, scaled_w, scaled_h)
+        src_surf = image_surface_from_cv2_img(cv2img)
+        work_surf, scale = scale_dims(src_surf)
+        scaled_w, scaled_h = work_surf.get_width(), work_surf.get_width()
         work_cr = cairo.Context(work_surf)
-        work_cr.save()
-        work_cr.scale(scale, scale)
-        work_cr.set_source_surface(src_surf, 0, 0)
-        work_cr.paint()
-        work_cr.restore()
 
         label_draws: list[Callable[[], None]] = []
 

@@ -102,7 +102,7 @@ def scale_for_tg(surface: cairo.ImageSurface) -> cairo.ImageSurface:
     return surface
 
 
-def image_surface_from_cv2_img(cv2img: cv2.typing.MatLike) -> tuple[cairo.ImageSurface, int, int]:
+def image_surface_from_cv2_img(cv2img: cv2.typing.MatLike) -> cairo.ImageSurface:
     if cv2img is None:
         raise ValueError("cv2img is None")
     if len(cv2img.shape) == 2:
@@ -119,7 +119,7 @@ def image_surface_from_cv2_img(cv2img: cv2.typing.MatLike) -> tuple[cairo.ImageS
     stride = w * 4
     data = cv2img.tobytes()
     surf = cairo.ImageSurface.create_for_data(bytearray(data), cairo.FORMAT_ARGB32, w, h, stride)
-    return surf, w, h
+    return surf
 
 def layout_text(cr: cairo.Context, text: str, font_family: str, font_size: float, width: int | None = None, alignment: int = Pango.Alignment.LEFT) -> tuple[Pango.Layout, int, int]:
     layout = PangoCairo.create_layout(cr)
@@ -135,3 +135,25 @@ def layout_text(cr: cairo.Context, text: str, font_family: str, font_size: float
         layout.set_wrap(Pango.WrapMode.WORD_CHAR)
     w, h = layout.get_pixel_size()
     return layout, w, h
+
+def scale_dims(surface: cairo.ImageSurface, min_dim: int = 512) -> tuple[cairo.ImageSurface, float]:
+    w, h = surface.get_width(), surface.get_height()
+    img_dim = min(w, h)
+    scale = 1.0
+    if img_dim * scale < min_dim:
+        scale *= min_dim / (img_dim * scale)
+    else:
+        return surface, scale
+    
+    scaled_w = max(1, int(w * scale))
+    scaled_h = max(1, int(h * scale))
+
+    # рабочая поверхность: рисуем отмасштабированное изображение на ней
+    work_surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, scaled_w, scaled_h)
+    work_cr = cairo.Context(work_surf)
+    work_cr.save()
+    work_cr.scale(scale, scale)
+    work_cr.set_source_surface(surface, 0, 0)
+    work_cr.paint()
+    work_cr.restore()
+    return work_surf, scale

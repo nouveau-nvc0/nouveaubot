@@ -14,7 +14,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import re
 from math import floor, ceil
 import asyncio
 import io
@@ -35,7 +34,7 @@ from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.pool_executor import executor
 from bot.handler import Handler
-from bot.utils.cairo_helpers import scale_for_tg, image_surface_from_cv2_img, layout_text
+from bot.utils.cairo_helpers import scale_dims, scale_for_tg, image_surface_from_cv2_img, layout_text
 
 
 class _Demotivator:
@@ -44,10 +43,8 @@ class _Demotivator:
     _MIN_IMG_W = 512
 
     @staticmethod
-    def create(img_data: bytes, _text1: str, _text2: list[str]) -> bytes | str:
-        # sanitize
-        text1 = re.sub(r'[<>]', '', _text1)
-        text2 = re.sub(r'[<>]', '', r'\n'.join(_text2))
+    def create(img_data: bytes, text1: str, _text2: list[str]) -> bytes | str:
+        text2 = '\n'.join(_text2)
 
         # decode via OpenCV
         nparr = np.frombuffer(img_data, np.uint8)
@@ -55,17 +52,10 @@ class _Demotivator:
         if cv2img is None:
             return "не удалось обработать изображение"
 
-        # scale input to at least 512 px width (height free)
-        h0, w0 = cv2img.shape[:2]
-        if w0 < _Demotivator._MIN_IMG_W:
-            scale = _Demotivator._MIN_IMG_W / float(w0)
-            new_w = _Demotivator._MIN_IMG_W
-            new_h = max(1, int(round(h0 * scale)))
-            cv2img = cv2.resize(cv2img, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
-        # limit insane huge inputs a bit (optional, but keep aspect). Not requested to limit; leave as-is otherwise.
-
         # convert to cairo surface
-        img_surf, img_w, img_h = image_surface_from_cv2_img(cv2img)
+        src_surf = image_surface_from_cv2_img(cv2img)
+        img_surf, _ = scale_dims(src_surf)
+        img_w, img_h = img_surf.get_width(), img_surf.get_height()
 
         # output width = floor(img.width * 1.1)
         out_w = floor(img_w * 1.1)
