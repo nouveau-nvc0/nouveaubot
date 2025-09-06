@@ -1,5 +1,5 @@
 services:
-  basilbot:
+  nouveaubot:
     build: .
     environment:
       - BOT_STATIC_PATH=/app/static
