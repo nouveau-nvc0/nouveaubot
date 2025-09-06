@@ -15,6 +15,7 @@
 
 from aiogram import Dispatcher
 from aiogram.types import Message
+from aiogram import Bot
 
 from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_text_from_message
@@ -35,11 +36,11 @@ class CPHandler(Handler):
     def description(self) -> str:
         return "тупой юмор"
 
-    def __init__(self, dp: Dispatcher) -> None:
+    def __init__(self, dp: Dispatcher, bot: Bot) -> None:
         Handler.__init__(self)
-        dp.message(CommandFilter(self.aliases))(self.ping)
+        CommandFilter.setup(self.aliases, dp, bot, self._handle)
 
-    async def ping(self, message: Message) -> None:
+    async def _handle(self, message: Message) -> None:
         txt = fetch_text_from_message(message)
         if txt is None:
             await message.answer("дополнительно напишите или перешлите текст")

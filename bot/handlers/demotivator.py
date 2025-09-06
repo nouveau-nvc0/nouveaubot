@@ -37,10 +37,24 @@ from bot.handler import Handler
 from bot.utils.cairo_helpers import scale_dims, scale_for_tg, image_surface_from_cv2_img, layout_text
 
 
-class _Demotivator:
+class DemotivatorHandler(Handler):
     _BIG_FONT_SIZE = 0.052
     _SM_FONT_SIZE = 0.036
     _MIN_IMG_W = 512
+
+    _bot: Bot
+
+    @property
+    def aliases(self) -> list[str]:
+        return ["dem", "дем"]
+
+    @property
+    def description(self) -> str:
+        return "сгенерировать демотиватор. разделитель - перенос строки"
+
+    def __init__(self, dp: Dispatcher, bot: Bot) -> None:
+        self._bot = bot
+        CommandFilter.setup(self.aliases, dp, bot, self.handle)
 
     @staticmethod
     def create(img_data: bytes, text1: str, _text2: list[str]) -> bytes | str:
@@ -69,7 +83,7 @@ class _Demotivator:
         # big line
         tmp1 = cairo.ImageSurface(cairo.FORMAT_ARGB32, out_w, 1)
         cr1 = cairo.Context(tmp1)
-        big_font_px = _Demotivator._BIG_FONT_SIZE * out_w
+        big_font_px = DemotivatorHandler._BIG_FONT_SIZE * out_w
         layout1, big_w, big_h = layout_text(cr1, text1, "serif, Apple Color Emoji", big_font_px, width=out_w, alignment=Pango.Alignment.CENTER)
         
         # small block
@@ -78,7 +92,7 @@ class _Demotivator:
         if text2:
             tmp2 = cairo.ImageSurface(cairo.FORMAT_ARGB32, out_w, 1)
             cr2 = cairo.Context(tmp2)
-            sm_font_px = _Demotivator._SM_FONT_SIZE * out_w
+            sm_font_px = DemotivatorHandler._SM_FONT_SIZE * out_w
             layout2, sm_w, sm_h = layout_text(cr2, text2, "sans, Apple Color Emoji", sm_font_px, width=out_w, alignment=Pango.Alignment.CENTER)
 
         # compute total height:
@@ -133,22 +147,6 @@ class _Demotivator:
         final_surf.write_to_png(buf)
         return buf.getvalue()
 
-
-class DemotivatorHandler(Handler):
-    _bot: Bot
-
-    @property
-    def aliases(self) -> list[str]:
-        return ["dem", "дем"]
-
-    @property
-    def description(self) -> str:
-        return "сгенерировать демотиватор. разделитель - перенос строки"
-
-    def __init__(self, dp: Dispatcher, bot: Bot) -> None:
-        self._bot = bot
-        dp.message(CommandFilter(self.aliases))(self.handle)
-
     async def handle(self, message: Message, args: list[list[str]]) -> None:
         if not args:
             return
@@ -165,7 +163,7 @@ class DemotivatorHandler(Handler):
             return
 
         pic = await asyncio.get_running_loop().run_in_executor(None, stream.read)
-        result = await asyncio.get_running_loop().run_in_executor(executor, _Demotivator.create, pic, lines[0], lines[1:])
+        result = await asyncio.get_running_loop().run_in_executor(executor, DemotivatorHandler.create, pic, lines[0], lines[1:])
 
         if isinstance(result, bytes):
             await message.answer_photo(

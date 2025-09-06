@@ -35,8 +35,8 @@ async def route(dp: Dispatcher,
                 bot: Bot,
                 static_path: str) -> None:
     handlers: list[Handler] = [
-      PingHandler(dp),
-      CPHandler(dp),
+      PingHandler(dp, bot),
+      CPHandler(dp, bot),
       TacticalHandler(dp, bot),
       OmonHandler(dp, bot, static_path),
       DemotivatorHandler(dp, bot),

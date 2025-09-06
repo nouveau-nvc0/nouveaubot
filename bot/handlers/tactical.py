@@ -30,13 +30,13 @@ from bot.handler import Handler
 import asyncio
 import logging
 
-_BUBBLE_DOT1 = 12 / 17
-_BUBBLE_DOT2 = 16 / 17
-_LINE_WIDTH_K = 6 / 512
-_BUBBLE_HEIGHT_K = 0.1
-
 
 class TacticalHandler(Handler):
+    _BUBBLE_DOT1 = 12 / 17
+    _BUBBLE_DOT2 = 16 / 17
+    _LINE_WIDTH_K = 6 / 512
+    _BUBBLE_HEIGHT_K = 0.1
+
     _bot: Bot
 
     @property
@@ -49,8 +49,7 @@ class TacticalHandler(Handler):
 
     def __init__(self, dp: Dispatcher, bot: Bot) -> None:
         self._bot = bot
-
-        dp.message(CommandFilter(self.aliases))(self.handle)
+        CommandFilter.setup(self.aliases, dp, bot, self.handle)
 
     @staticmethod
     def process_image(img_data: bytes, face_num: int) -> bytes | str:
@@ -70,12 +69,12 @@ class TacticalHandler(Handler):
         img_surf, scale = scale_dims(src_surf)
         img_w, img_h = img_surf.get_width(), img_surf.get_height()
         
-        line_width = _LINE_WIDTH_K * ((img_w * img_h) ** 0.5)
+        line_width = TacticalHandler._LINE_WIDTH_K * ((img_w * img_h) ** 0.5)
         face_width = faces[face_num].x2 - faces[face_num].x1
 
-        def draw_triangle(cr: cairo.Context, x1=img_w * _BUBBLE_DOT1, y1=line_width * 0.5,
+        def draw_triangle(cr: cairo.Context, x1=img_w * TacticalHandler._BUBBLE_DOT1, y1=line_width * 0.5,
                           x2=(faces[face_num].x1 + face_width * 0.5) * scale, y2=faces[face_num].y1 * scale,
-                          x3=img_w * _BUBBLE_DOT2, y3=line_width * 0.5) -> None:
+                          x3=img_w * TacticalHandler._BUBBLE_DOT2, y3=line_width * 0.5) -> None:
             cr.line_to(x1, y1)
             cr.line_to(x2, y2)
             cr.line_to(x3, y3)
@@ -94,7 +93,7 @@ class TacticalHandler(Handler):
         stroke_cr.line_to(img_w, line_width * 0.5)
         stroke_cr.stroke()
 
-        bubble_h = int(_BUBBLE_HEIGHT_K * img_h)
+        bubble_h = int(TacticalHandler._BUBBLE_HEIGHT_K * img_h)
         out_surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, img_w, img_h + bubble_h)
         cr = cairo.Context(out_surf)
 

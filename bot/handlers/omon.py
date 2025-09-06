@@ -37,14 +37,14 @@ import logging
 import io
 from typing import Callable
 
-_FRAME_WIDTH = 6
-_FRAME_TEXT_FONT_SIZE = 16
-_BOTTOM_TEXT_FONT_FACTOR = 0.02
-_FONT_FAMILY = 'Mono'
 
 class OmonHandler(Handler):
-    _bot: Bot
+    _FRAME_WIDTH = 6
+    _FRAME_TEXT_FONT_SIZE = 16
+    _BOTTOM_TEXT_FONT_FACTOR = 0.02
+    _FONT_FAMILY = 'Mono'
 
+    _bot: Bot
     _sentences: dict[str, str]
 
     @property
@@ -61,7 +61,7 @@ class OmonHandler(Handler):
         with open(os.path.join(static_path, "sentences.json"), "r") as f:
             self._sentences = json.load(f)
 
-        dp.message(CommandFilter(self.aliases))(self.handle)
+        CommandFilter.setup(self.aliases, dp, bot, self.handle)
 
     @staticmethod
     def process_image(img_data: bytes, sentences: dict[str, str], manual_sentences: list[str]) -> str | bytes:
@@ -96,17 +96,18 @@ class OmonHandler(Handler):
         for i, f in enumerate(faces):
             x1 = int(f.x1 * scale); y1 = int(f.y1 * scale)
             x2 = int(f.x2 * scale); y2 = int(f.y2 * scale)
-            base_y = max(y1 - _FRAME_WIDTH, 0) + _FRAME_WIDTH // 2
-            base_x = x2 + _FRAME_WIDTH // 2
+            base_y = max(y1 - OmonHandler._FRAME_WIDTH, 0) + OmonHandler._FRAME_WIDTH // 2
+            base_x = x2 + OmonHandler._FRAME_WIDTH // 2
 
             # рамка
-            work_cr.set_line_width(_FRAME_WIDTH)
+            work_cr.set_line_width(OmonHandler._FRAME_WIDTH)
             work_cr.set_source_rgb(0, 1.0, 0)
             work_cr.rectangle(x1, y1, x2 - x1, y2 - y1)
             work_cr.stroke()
 
             txt = "Статья " + chosen_sentences[i][0]
-            layout_real, metrics_w, metrics_h = layout_text(work_cr, txt, _FONT_FAMILY, _FRAME_TEXT_FONT_SIZE)
+            layout_real, metrics_w, metrics_h = \
+                layout_text(work_cr, txt, OmonHandler._FONT_FAMILY, OmonHandler._FRAME_TEXT_FONT_SIZE)
 
             def draw_label(base_x=base_x, base_y=base_y, layout=layout_real, w=metrics_w, h=metrics_h):
                 work_cr.save()
@@ -129,12 +130,12 @@ class OmonHandler(Handler):
 
         # Нижний блок с перечислением статей, сразу нужной ширины
         bottom_txt = "\n".join("Статья {}. {}".format(x, y) for (x, y) in chosen_sentences)
-        bottom_font_size = _BOTTOM_TEXT_FONT_FACTOR * scaled_w
+        bottom_font_size = OmonHandler._BOTTOM_TEXT_FONT_FACTOR * scaled_w
 
         appendix_w = scaled_w
         tmp_surf2 = cairo.ImageSurface(cairo.FORMAT_ARGB32, appendix_w, 1)
         tmp_cr2 = cairo.Context(tmp_surf2)
-        layout_bottom, _, bottom_h = layout_text(tmp_cr2, bottom_txt, _FONT_FAMILY, bottom_font_size, width=appendix_w)
+        layout_bottom, _, bottom_h = layout_text(tmp_cr2, bottom_txt, OmonHandler._FONT_FAMILY, bottom_font_size, width=appendix_w)
 
         appendix_h = max(1, bottom_h)
         appendix = cairo.ImageSurface(cairo.FORMAT_ARGB32, appendix_w, appendix_h)

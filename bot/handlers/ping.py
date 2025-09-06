@@ -15,6 +15,7 @@
 
 from aiogram import Dispatcher
 from aiogram.types import Message
+from aiogram import Bot
 
 from bot.command_filter import CommandFilter
 from bot.handler import Handler
@@ -28,8 +29,8 @@ class PingHandler(Handler):
     def description(self) -> str:
         return 'проверить работоспособность бота'
 
-    def __init__(self, dp: Dispatcher) -> None:
-        dp.message(CommandFilter(self.aliases))(self.ping)
+    def __init__(self, dp: Dispatcher, bot: Bot) -> None:
+        CommandFilter.setup(self.aliases, dp, bot, self.handle)
 
-    async def ping(self, message: Message) -> None:
+    async def handle(self, message: Message) -> None:
         await message.answer("понг")

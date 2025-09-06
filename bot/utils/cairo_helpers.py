@@ -119,11 +119,15 @@ def image_surface_from_cv2_img(cv2img: cv2.typing.MatLike) -> cairo.ImageSurface
     surf = cairo.ImageSurface.create_for_data(bytearray(data), cairo.FORMAT_ARGB32, w, h, stride)
     return surf
 
-def layout_text(cr: cairo.Context, text: str, font_family: str, font_size: float, width: int | None = None, alignment: int = Pango.Alignment.LEFT) -> tuple[Pango.Layout, int, int]:
+def layout_text(cr: cairo.Context,
+                text: str,
+                font_family: str,
+                font_size: float,
+                width: int | None = None,
+                alignment: Pango.Alignment = Pango.Alignment.LEFT) -> tuple[Pango.Layout, int, int]:
     layout = PangoCairo.create_layout(cr)
     fd = Pango.FontDescription()
-    if font_family:
-        fd.set_family(font_family)
+    fd.set_family(font_family)
     fd.set_size(int(font_size * Pango.SCALE))
     layout.set_font_description(fd)
     layout.set_text(text, -1)
