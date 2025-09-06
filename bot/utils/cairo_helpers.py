@@ -15,8 +15,6 @@
 
 import cairo
 import cv2
-import numpy as np
-
 import gi
 gi.require_version("Pango", "1.0")
 gi.require_version("PangoCairo", "1.0")

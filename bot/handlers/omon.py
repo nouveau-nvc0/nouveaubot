@@ -19,12 +19,8 @@ import cv2
 import numpy as np
 import cairo
 import gi
-
-
-gi.require_version("Pango", "1.0")
 gi.require_version("PangoCairo", "1.0")
 from gi.repository import PangoCairo
-from gi.repository import Pango
 
 from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
@@ -44,7 +40,6 @@ from typing import Callable
 _FRAME_WIDTH = 6
 _FRAME_TEXT_FONT_SIZE = 16
 _BOTTOM_TEXT_FONT_FACTOR = 0.02
-_MIN_DIM = 512.0
 _FONT_FAMILY = 'Mono'
 
 class OmonHandler(Handler):
@@ -92,7 +87,7 @@ class OmonHandler(Handler):
 
         src_surf = image_surface_from_cv2_img(cv2img)
         work_surf, scale = scale_dims(src_surf)
-        scaled_w, scaled_h = work_surf.get_width(), work_surf.get_width()
+        scaled_w, scaled_h = work_surf.get_width(), work_surf.get_height()
         work_cr = cairo.Context(work_surf)
 
         label_draws: list[Callable[[], None]] = []
