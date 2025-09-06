@@ -13,9 +13,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from aiogram import Dispatcher
+from aiogram import Dispatcher, Bot
 from aiogram.types import Message
-from aiogram import Bot
 
 from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_text_from_message
@@ -37,7 +36,6 @@ class CPHandler(Handler):
         return "тупой юмор"
 
     def __init__(self, dp: Dispatcher, bot: Bot) -> None:
-        Handler.__init__(self)
         CommandFilter.setup(self.aliases, dp, bot, self._handle)
 
     async def _handle(self, message: Message) -> None:

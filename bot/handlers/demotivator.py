@@ -54,7 +54,7 @@ class DemotivatorHandler(Handler):
 
     def __init__(self, dp: Dispatcher, bot: Bot) -> None:
         self._bot = bot
-        CommandFilter.setup(self.aliases, dp, bot, self.handle)
+        CommandFilter.setup(self.aliases, dp, bot, self._handle)
 
     @staticmethod
     def create(img_data: bytes, text1: str, _text2: list[str]) -> bytes | str:
@@ -147,7 +147,7 @@ class DemotivatorHandler(Handler):
         final_surf.write_to_png(buf)
         return buf.getvalue()
 
-    async def handle(self, message: Message, args: list[list[str]]) -> None:
+    async def _handle(self, message: Message, args: list[list[str]]) -> None:
         if not args:
             return
         lines = [' '.join(x) for x in args]

@@ -49,7 +49,7 @@ class OmonHandler(Handler):
 
     @property
     def aliases(self) -> list[str]:
-        return ["омон", "omon"]
+        return ["omon", "омон"]
     
     @property
     def description(self) -> str:
@@ -61,7 +61,7 @@ class OmonHandler(Handler):
         with open(os.path.join(static_path, "sentences.json"), "r") as f:
             self._sentences = json.load(f)
 
-        CommandFilter.setup(self.aliases, dp, bot, self.handle)
+        CommandFilter.setup(self.aliases, dp, bot, self._handle)
 
     @staticmethod
     def process_image(img_data: bytes, sentences: dict[str, str], manual_sentences: list[str]) -> str | bytes:
@@ -166,7 +166,7 @@ class OmonHandler(Handler):
         result.write_to_png(out)
         return out.getvalue()
 
-    async def handle(self, message: Message, args: list[list[str]]) -> None:
+    async def _handle(self, message: Message, args: list[list[str]]) -> None:
         photo = fetch_image_from_message(message)
         if not photo:
             await message.answer("нужно прикрепить пикчу")

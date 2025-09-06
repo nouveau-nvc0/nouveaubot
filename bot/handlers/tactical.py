@@ -49,7 +49,7 @@ class TacticalHandler(Handler):
 
     def __init__(self, dp: Dispatcher, bot: Bot) -> None:
         self._bot = bot
-        CommandFilter.setup(self.aliases, dp, bot, self.handle)
+        CommandFilter.setup(self.aliases, dp, bot, self._handle)
 
     @staticmethod
     def process_image(img_data: bytes, face_num: int) -> bytes | str:
@@ -111,7 +111,7 @@ class TacticalHandler(Handler):
         final_surf.write_to_png(buf)
         return buf.getvalue()
 
-    async def handle(self, message: Message, args: list[list[str]]) -> None:
+    async def _handle(self, message: Message, args: list[list[str]]) -> None:
         photo = fetch_image_from_message(message)
         if not photo:
             await message.answer("нужно прикрепить пикчу")

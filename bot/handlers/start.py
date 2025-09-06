@@ -1,4 +1,4 @@
-# Copyright (C) 2024 nouveaubot contributors
+# Copyright (C) 2025 nouveaubot contributors
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -15,21 +15,34 @@
 
 from aiogram import Dispatcher, Bot
 from aiogram.types import Message
+from aiogram.enums.parse_mode import ParseMode
+from aiogram.enums import ChatType
 
 from bot.command_filter import CommandFilter
 from bot.handler import Handler
 
-class PingHandler(Handler):
+from typing import Iterable
+
+class StartHandler(Handler):
+    _start_html: str
+    _bot: Bot
+
     @property
     def aliases(self) -> list[str]:
-        return ["ping", "пинг"]
+        return ["start", "help"]
     
     @property
     def description(self) -> str:
-        return 'проверить работоспособность бота'
+        return 'список команд'
 
-    def __init__(self, dp: Dispatcher, bot: Bot) -> None:
+    def __init__(self, dp: Dispatcher, bot: Bot, handlers: Iterable[Handler]) -> None:
+        self._bot = bot
         CommandFilter.setup(self.aliases, dp, bot, self._handle)
+        self._start_html = '\n\n'.join(f'<b>/{x.aliases[0]}{{bot_tag}}</b>: {x.description}' for x in handlers) + \
+          ('\n\n<a href="https://github.com/nouveau-nvc0/nouveaubot/blob/main/LICENSE">AGPLv3</a>. '
+          'All (far-)rights reserved. <a href="https://github.com/nouveau-nvc0/nouveaubot">Source code</a>')
 
     async def _handle(self, message: Message) -> None:
-        await message.answer("понг")
+        me = await self._bot.me()
+        await message.answer(self._start_html.format(bot_tag=f'@{me.username}' if message.chat.type != ChatType.PRIVATE else ''),
+                             parse_mode=ParseMode.HTML, disable_web_page_preview=True)

@@ -21,6 +21,7 @@ from bot.handlers.tactical import TacticalHandler
 from bot.handlers.omon import OmonHandler
 from bot.handlers.cp import CPHandler
 from bot.handlers.demotivator import DemotivatorHandler
+from bot.handlers.start import StartHandler
 from bot.handler import Handler
 
 import re
@@ -35,12 +36,14 @@ async def route(dp: Dispatcher,
                 bot: Bot,
                 static_path: str) -> None:
     handlers: list[Handler] = [
-      PingHandler(dp, bot),
-      CPHandler(dp, bot),
-      TacticalHandler(dp, bot),
       OmonHandler(dp, bot, static_path),
       DemotivatorHandler(dp, bot),
+      TacticalHandler(dp, bot),
+      CPHandler(dp, bot),
+      PingHandler(dp, bot),
     ]
+
+    handlers.append(StartHandler(dp, bot, handlers))
 
     commands: list[BotCommand] = []
     
