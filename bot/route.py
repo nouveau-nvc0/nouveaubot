@@ -13,12 +13,14 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import os
 from aiogram import Dispatcher, Bot
 from aiogram.types import BotCommand
 
 from bot.handlers.ping import PingHandler
 from bot.handlers.tactical import TacticalHandler
 from bot.handlers.omon import OmonHandler
+from bot.handlers.config_omon import ConfigOmonHandler
 from bot.handlers.cp import CPHandler
 from bot.handlers.demotivator import DemotivatorHandler
 from bot.handlers.start import StartHandler
@@ -34,9 +36,14 @@ def _find_latin(aliases: list[str]) -> str | None:
 
 async def route(dp: Dispatcher,
                 bot: Bot,
-                static_path: str) -> None:
+                static_path: str,
+                db_path: str) -> None:
+    
+    omon_db_file = os.path.join(db_path, 'omon.db')
+
     handlers: list[Handler] = [
-      OmonHandler(dp, bot, static_path),
+      OmonHandler(dp, bot, static_path, omon_db_file),
+      ConfigOmonHandler(dp, bot, omon_db_file),
       DemotivatorHandler(dp, bot),
       TacticalHandler(dp, bot),
       CPHandler(dp, bot),

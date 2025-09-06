@@ -13,8 +13,14 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from aiogram import Dispatcher, Bot
-from aiogram.types import Message, BufferedInputFile
+import io
+import os
+import random
+import asyncio
+import logging
+import re
+from typing import Callable
+
 import cv2
 import numpy as np
 import cairo
@@ -22,46 +28,51 @@ import gi
 gi.require_version("PangoCairo", "1.0")
 from gi.repository import PangoCairo
 
+from aiogram import Dispatcher, Bot
+from aiogram.types import Message, BufferedInputFile
+
 from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.detect_faces import detect_faces
 from bot.utils.pool_executor import executor
 from bot.utils.cairo_helpers import scale_dims, scale_for_tg, layout_text, image_surface_from_cv2_img
 from bot.handler import Handler
-
-import os
-import json
-import random
-import asyncio
-import logging
-import io
-from typing import Callable
+from bot.utils.omon_db import (
+    init_db, get_codes, get_or_default_code_id, load_sentences,
+    RESERVED_DEFAULT_CODE
+)
 
 
 class OmonHandler(Handler):
     _FRAME_WIDTH = 6
     _FRAME_TEXT_FONT_SIZE = 16
     _BOTTOM_TEXT_FONT_FACTOR = 0.02
-    _FONT_FAMILY = 'Mono'
+    _FONT_FAMILY = 'DejaVu Sans Mono'
 
     _bot: Bot
-    _sentences: dict[str, str]
+    _db_file: str
 
     @property
     def aliases(self) -> list[str]:
         return ["omon", "омон"]
-    
+
     @property
     def description(self) -> str:
         return 'статьи УК РФ для каждого на картинке'
 
-    def __init__(self, dp: Dispatcher, bot: Bot, static_path: str) -> None:
+    def __init__(self, dp: Dispatcher, bot: Bot, static_path: str, db_file: str) -> None:
         self._bot = bot
+        self._db_file = db_file
+        init_db(self._db_file, os.path.join(static_path, 'omon.sql'))
+        CommandFilter.setup(self.aliases, dp, bot, self._handle, allow_suffix_for=self.aliases)
 
-        with open(os.path.join(static_path, "sentences.json"), "r") as f:
-            self._sentences = json.load(f)
-
-        CommandFilter.setup(self.aliases, dp, bot, self._handle)
+    @staticmethod
+    def _list_codes_text(chat_id: int, codes: list[str]) -> str:
+        header = "Прикрепи картинку.\nДоступные кодексы для этого чата:"
+        if not codes:
+            return f"{header}\n- (нет)\nПо умолчанию используется: {RESERVED_DEFAULT_CODE}\nПример: /omon"
+        items = "\n".join(f"- {x} (команда: /omon_{x})" for x in codes)
+        return f"{header}\n{items}\nПо умолчанию: {RESERVED_DEFAULT_CODE} (команда: /omon)"
 
     @staticmethod
     def process_image(img_data: bytes, sentences: dict[str, str], manual_sentences: list[str]) -> str | bytes:
@@ -74,16 +85,28 @@ class OmonHandler(Handler):
             return "лица не обнаружены"
         
         chosen_sentences: list[tuple[str, str]] = []
-        for i, sentence in enumerate(manual_sentences):
-            if i == len(faces):
-                break
-            try:
-                chosen_sentences.append((sentence, sentences[sentence]))
-            except KeyError:
-                return f'статья {sentence} не найдена'
 
-        if len(chosen_sentences) < len(faces):
-            chosen_sentences += random.sample(list(sentences.items()), len(faces) - len(chosen_sentences))
+        # ручные статьи
+        for i, sentence in enumerate(manual_sentences):
+            if i >= len(faces):
+                break
+            if sentence not in sentences:
+                return f'статья {sentence} не найдена'
+            chosen_sentences.append((sentence, sentences[sentence]))
+
+        # добор до количества лиц
+        remaining = len(faces) - len(chosen_sentences)
+        if remaining > 0:
+            exclude = {name for name, _ in chosen_sentences}
+            pool = [(k, v) for k, v in sentences.items() if k not in exclude]
+            if not pool:
+                return 'нет статей для выбора'
+            if len(pool) >= remaining:
+                chosen_sentences += random.sample(pool, remaining)
+            else:
+                chosen_sentences += pool
+                extra = remaining - len(pool)
+                chosen_sentences += random.choices(pool, k=extra)
 
         src_surf = image_surface_from_cv2_img(cv2img)
         work_surf, scale = scale_dims(src_surf)
@@ -167,29 +190,36 @@ class OmonHandler(Handler):
         return out.getvalue()
 
     async def _handle(self, message: Message, args: list[list[str]]) -> None:
+        text = (message.text or message.caption or "").strip()
+        m = re.match(r'^/(?:omon|омон)(?:_([a-z]+))?(?:\s+(.*))?$', text)
+        code_name = (m.group(1).lower() if m and m.group(1) else None)
+        manual_sentences = (m.group(2).split() if m and m.group(2) else [])
+
         photo = fetch_image_from_message(message)
         if not photo:
-            await message.answer("нужно прикрепить пикчу")
+            codes = await get_codes(self._db_file, message.chat.id)
+            await message.answer(self._list_codes_text(message.chat.id, codes))
             return
 
         stream = await self._bot.download(photo)
         if stream is None:
             await message.answer('не удалось скачать пикчу')
             return
-        
         pic = await asyncio.get_running_loop().run_in_executor(None, stream.read)
-        result = await asyncio.get_running_loop()\
-            .run_in_executor(executor, self.process_image, pic, self._sentences, args[0] if args else [])
+
+        code_id = await get_or_default_code_id(self._db_file, message.chat.id, code_name)
+        sentences = await load_sentences(self._db_file, code_id)
+
+        result = await asyncio.get_running_loop().run_in_executor(
+            executor, self.process_image, pic, sentences, manual_sentences
+        )
 
         if isinstance(result, bytes):
             buffered = BufferedInputFile(result, "image.png")
-            await message.answer_photo(
-                buffered,
-                caption="ваша пикча"
-            )
+            await message.answer_photo(buffered, caption="ваша пикча")
         elif isinstance(result, str):
             await message.answer(result)
         else:
-            logging.error(f'Unexcepted process_image() result: {result}')
+            logging.error(f'Unexpected process_image() result: {result}')
             await message.answer('не удалось обработать пикчу')
 

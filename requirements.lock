@@ -108,6 +108,10 @@ aiosignal==1.4.0 \
     --hash=sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e \
     --hash=sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7
     # via aiohttp
+aiosqlite==0.21.0 \
+    --hash=sha256:131bb8056daa3bc875608c631c678cda73922a2d4ba8aec373b19f18c17e7aa3 \
+    --hash=sha256:2549cf4057f95f53dcba16f2b64e8e2791d7e1adedb13197dd8ed77bb226d7d0
+    # via nouveaubot (pyproject.toml)
 albucore==0.0.24 \
     --hash=sha256:adef6e434e50e22c2ee127b7a3e71f2e35fa088bcf54431e18970b62d97d0005 \
     --hash=sha256:f2cab5431fadf94abf87fd0c89d9f59046e49fe5de34afea8f89bc8390253746
@@ -1844,6 +1848,7 @@ typing-extensions==4.15.0 \
     # via
     #   aiogram
     #   aiosignal
+    #   aiosqlite
     #   onnx
     #   pydantic
     #   pydantic-core

@@ -8,9 +8,12 @@ services:
     user: "${UID:-1000}:${GID:-1000}"
     environment:
       - BOT_STATIC_PATH=/app/static
+      - BOT_DATABASE_PATH=/app/db
       - BOT_TOKEN
     volumes:
       - insightface_cache:/app/.insightface:rw
+      - db:/app/db
 
 volumes:
   insightface_cache:
+  db:

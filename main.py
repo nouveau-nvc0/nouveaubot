@@ -21,16 +21,17 @@ from bot.route import route
 import asyncio
 
 
-async def main(token: str, static_path: str) -> None:
+async def main() -> None:
+    token = environ["BOT_TOKEN"]
+    static_path = environ["BOT_STATIC_PATH"]
+    db_path = environ["BOT_DATABASE_PATH"]
+
     bot = Bot(token)
 
     dp = Dispatcher()
-    await route(dp=dp, bot=bot, static_path=static_path)
+    await route(dp=dp, bot=bot, static_path=static_path, db_path=db_path)
 
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    token = environ["BOT_TOKEN"]
-    static_path = environ["BOT_STATIC_PATH"]
-
-    asyncio.run(main(token, static_path))
+    asyncio.run(main())

@@ -29,7 +29,7 @@ COPY . /app
 ARG APP_UID=1000
 ARG APP_GID=1000
 RUN set -eux; \
-    mkdir /app/.insightface; \
+    mkdir /app/.insightface; mkdir /app/db; \
     groupadd -g "${APP_GID}" appuser || groupmod -n appuser "$(getent group "${APP_GID}" | cut -d: -f1)" || true; \
     id -u "${APP_UID}" >/dev/null 2>&1 || useradd -u "${APP_UID}" -g "${APP_GID}" -d /app -s /usr/sbin/nologin appuser; \
     chown -R "${APP_UID}:${APP_GID}" /app

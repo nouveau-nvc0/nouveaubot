@@ -84,7 +84,7 @@ class DemotivatorHandler(Handler):
         tmp1 = cairo.ImageSurface(cairo.FORMAT_ARGB32, out_w, 1)
         cr1 = cairo.Context(tmp1)
         big_font_px = DemotivatorHandler._BIG_FONT_SIZE * out_w
-        layout1, big_w, big_h = layout_text(cr1, text1, "serif, Apple Color Emoji", big_font_px, width=out_w, alignment=Pango.Alignment.CENTER)
+        layout1, big_w, big_h = layout_text(cr1, text1, "serif", big_font_px, width=out_w, alignment=Pango.Alignment.CENTER)
         
         # small block
         sm_h = 0
@@ -93,7 +93,7 @@ class DemotivatorHandler(Handler):
             tmp2 = cairo.ImageSurface(cairo.FORMAT_ARGB32, out_w, 1)
             cr2 = cairo.Context(tmp2)
             sm_font_px = DemotivatorHandler._SM_FONT_SIZE * out_w
-            layout2, sm_w, sm_h = layout_text(cr2, text2, "sans, Apple Color Emoji", sm_font_px, width=out_w, alignment=Pango.Alignment.CENTER)
+            layout2, sm_w, sm_h = layout_text(cr2, text2, "sans", sm_font_px, width=out_w, alignment=Pango.Alignment.CENTER)
 
         # compute total height:
         # dem1.height + dem2.height + img.height + floor(0.12 * img.width)
