@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nouveaubot"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "opencv-python",
+  "aiogram",
+  "insightface",
+  "onnxruntime",
+  "PyGObject",
+]
+
+[tool.setuptools]
+py-modules = ["main"]

@@ -1,9 +1,16 @@
 services:
   nouveaubot:
-    build: .
+    build:
+      context: .
+      args:
+        APP_UID: ${UID:-1000}
+        APP_GID: ${GID:-1000}
+    user: "${UID:-1000}:${GID:-1000}"
     environment:
       - BOT_STATIC_PATH=/app/static
       - BOT_TOKEN
     volumes:
-      - ./insightface_cache:/root/.insightface
-      - ./ImageMagick-7/policy.xml:/etc/ImageMagick-7/policy.xml:ro
+      - insightface_cache:/app/.insightface:rw
+
+volumes:
+  insightface_cache:
