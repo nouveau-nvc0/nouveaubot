@@ -15,11 +15,7 @@
 
 import sqlite3
 import aiosqlite
-from typing import Optional, List, Dict
-
-MAX_CODES_PER_CHAT = 10
-MAX_SENTENCES_PER_CODE = 500
-RESERVED_DEFAULT_CODE = 'ukrf'
+from dataclasses import dataclass
 
 def _conn(db_file: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_file)
@@ -35,44 +31,51 @@ def init_db(db_file: str, sql_path: str) -> None:
         c.executescript(script)
 
 
-async def get_codes(db_file: str, chat_id: int) -> List[str]:
+@dataclass
+class CodeRecord:
+    id: int
+    name: str
+    n_sentences: int
+
+async def get_codes(db_file: str, chat_id: int) -> list[CodeRecord]:
     async with aiosqlite.connect(db_file) as c:
         await c.execute('PRAGMA foreign_keys = ON')
         c.row_factory = sqlite3.Row
         cur = await c.execute(
-            'SELECT code_name FROM codes WHERE chat_id = ? ORDER BY code_name',
+            '''SELECT codes.id, codes.code_name, COUNT(codes_sentences.id) AS sentences_count
+FROM codes
+LEFT JOIN codes_sentences ON codes.id = codes_sentences.code_id
+WHERE codes.chat_id = ?
+GROUP BY codes.code_name
+ORDER BY codes.code_name''',
             (chat_id,)
         )
         rows = await cur.fetchall()
-        return [r['code_name'] for r in rows]
+        return [CodeRecord(r['id'], r['code_name'], r['sentences_count']) for r in rows]
 
-async def get_or_default_code_id(db_file: str, chat_id: Optional[int], code_name: Optional[str]) -> int:
-    """Если code_name не задан — вернуть id глобального ukrf (chat_id IS NULL)."""
-    if not code_name:
-        chat_id = None
-        code_name = RESERVED_DEFAULT_CODE
+async def get_or_default_code_id(db_file: str, chat_id: int | None, code_name: str | None) -> int:
     async with aiosqlite.connect(db_file) as c:
         await c.execute('PRAGMA foreign_keys = ON')
         c.row_factory = sqlite3.Row
 
-        cur = await c.execute(
-            'SELECT id FROM codes WHERE chat_id IS ? AND code_name = ?',
-            (chat_id, code_name)
-        )
-        row = await cur.fetchone()
-        if row:
-            return int(row['id'])
+        if chat_id is not None and code_name is not None:
+            cur = await c.execute(
+                'SELECT id FROM codes WHERE chat_id IS ? AND code_name = ?',
+                (chat_id, code_name)
+            )
+            row = await cur.fetchone()
+            if row:
+                return int(row['id'])
 
         cur = await c.execute(
-            'SELECT id FROM codes WHERE chat_id IS NULL AND code_name = ?',
-            (RESERVED_DEFAULT_CODE,)
+            'SELECT id FROM codes WHERE chat_id IS NULL'
         )
         row = await cur.fetchone()
         if not row:
-            raise RuntimeError('default code ukrf missing')
+            raise RuntimeError('default code missing')
         return int(row['id'])
 
-async def load_sentences(db_file: str, code_id: int) -> Dict[str, str]:
+async def load_sentences(db_file: str, code_id: int) -> dict[str, str]:
     async with aiosqlite.connect(db_file) as c:
         await c.execute('PRAGMA foreign_keys = ON')
         c.row_factory = sqlite3.Row
@@ -84,8 +87,6 @@ async def load_sentences(db_file: str, code_id: int) -> Dict[str, str]:
         return {r['sentence_name']: r['sentence_description'] for r in rows}
 
 async def create_code(db_file: str, chat_id: int, code_name: str) -> None:
-    if code_name == RESERVED_DEFAULT_CODE:
-        raise ValueError('code_name ukrf is reserved')
     async with aiosqlite.connect(db_file) as c:
         await c.execute('PRAGMA foreign_keys = ON')
         await c.execute(
@@ -103,17 +104,6 @@ async def delete_code(db_file: str, chat_id: int, code_name: str) -> int:
         )
         await c.commit()
         return cur.rowcount
-
-async def get_code_id(db_file: str, chat_id: int, code_name: str) -> Optional[int]:
-    async with aiosqlite.connect(db_file) as c:
-        await c.execute('PRAGMA foreign_keys = ON')
-        c.row_factory = sqlite3.Row
-        cur = await c.execute(
-            'SELECT id FROM codes WHERE chat_id = ? AND code_name = ?',
-            (chat_id, code_name)
-        )
-        row = await cur.fetchone()
-        return int(row['id']) if row else None
 
 async def upsert_sentence(db_file: str, code_id: int, sentence_name: str, sentence_description: str) -> None:
     async with aiosqlite.connect(db_file) as c:

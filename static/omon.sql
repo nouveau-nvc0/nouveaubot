@@ -1,48 +1,165 @@
+-- ===================== MIGRATION (SQLite) =====================
 PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
 
-CREATE TABLE IF NOT EXISTS codes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-  chat_id INTEGER,
-  code_name TEXT NOT NULL CHECK (code_name GLOB '[a-z][a-z]*'),
+BEGIN IMMEDIATE;
+
+-- ---------- drop old triggers/indexes ----------
+DROP TRIGGER IF EXISTS trg_codes_block_ukrf_ins;
+DROP TRIGGER IF EXISTS trg_codes_block_ukrf_upd;
+DROP TRIGGER IF EXISTS trg_codes_block_ukrf_del;
+DROP TRIGGER IF EXISTS trg_codes_limit_per_chat_ins;
+DROP TRIGGER IF EXISTS trg_codes_limit_per_chat_upd;
+DROP TRIGGER IF EXISTS trg_sentences_limit_per_code_ins;
+DROP TRIGGER IF EXISTS trg_sentences_limit_per_code_upd;
+
+DROP INDEX IF EXISTS unq_codes_null_chat;
+DROP INDEX IF EXISTS idx_codes_chat_id;
+DROP INDEX IF EXISTS idx_sentences_code_id;
+DROP INDEX IF EXISTS idx_sentences_code_name;
+
+-- ---------- new schema ----------
+CREATE TABLE IF NOT EXISTS codes_new (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  chat_id   INTEGER,
+  code_name TEXT NOT NULL
+    CHECK (code_name = lower(trim(code_name)))
+    CHECK (code_name GLOB '[a-z][a-z]*')
+    CHECK (length(code_name) BETWEEN 1 AND 32),
   CONSTRAINT unq_codes_chat_code UNIQUE (chat_id, code_name)
 );
 
--- глобальная уникальность для NULL чата (дефолтный кодекс)
+CREATE TABLE IF NOT EXISTS codes_sentences_new (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  code_id              INTEGER NOT NULL,
+  sentence_name        TEXT NOT NULL
+    CHECK (sentence_name = trim(sentence_name))
+    CHECK (length(sentence_name) BETWEEN 1 AND 64),
+  sentence_description TEXT NOT NULL
+    CHECK (sentence_description = trim(sentence_description))
+    CHECK (length(sentence_description) BETWEEN 1 AND 4096),
+  CONSTRAINT unq_sentences UNIQUE (code_id, sentence_name),
+  CONSTRAINT fk_codes_sentences_code
+    FOREIGN KEY(code_id) REFERENCES codes_new(id) ON DELETE CASCADE
+);
+
+-- ---------- copy & normalize ----------
+-- игнорируем ukrf, если он был создан с ненулевым chat_id (схема сама добавит дефолт позже)
+INSERT INTO codes_new(id, chat_id, code_name)
+SELECT id, chat_id, lower(trim(code_name))
+FROM   codes
+WHERE  NOT (lower(trim(code_name))='ukrf' AND chat_id IS NOT NULL);
+
+-- только непросиротевшие статьи
+INSERT INTO codes_sentences_new(id, code_id, sentence_name, sentence_description)
+SELECT s.id, s.code_id, trim(s.sentence_name), trim(s.sentence_description)
+FROM   codes_sentences s
+JOIN   codes_new c ON c.id = s.code_id;
+
+-- ---------- validate existing data (single summed assertion) ----------
+CREATE TEMP TABLE _assert(x INTEGER CHECK (x=0));
+
+CREATE TEMP VIEW _violations(v) AS
+  -- некорректные code_name
+  SELECT COUNT(*) FROM codes_new
+   WHERE code_name IS NULL
+      OR code_name NOT GLOB '[a-z][a-z]*'
+      OR length(code_name) NOT BETWEEN 1 AND 32
+UNION ALL
+  -- лимит: не более 10 кодексов на чат
+  SELECT COUNT(*) FROM (
+    SELECT chat_id, COUNT(*) n
+    FROM codes_new
+    WHERE chat_id IS NOT NULL
+    GROUP BY chat_id
+    HAVING n > 10
+  )
+UNION ALL
+  -- длины статей/описаний
+  SELECT COUNT(*) FROM codes_sentences_new
+   WHERE length(sentence_name) NOT BETWEEN 1 AND 64
+      OR length(sentence_description) NOT BETWEEN 1 AND 4096
+UNION ALL
+  -- лимит: не более 500 статей на кодекс
+  SELECT COUNT(*) FROM (
+    SELECT code_id, COUNT(*) n
+    FROM codes_sentences_new
+    GROUP BY code_id
+    HAVING n > 500
+  );
+
+-- если сумма нарушений > 0 — падаем
+INSERT INTO _assert
+SELECT IFNULL(SUM(v),0) FROM _violations;
+
+-- ---------- swap ----------
+ALTER TABLE codes            RENAME TO codes_old;
+ALTER TABLE codes_sentences  RENAME TO codes_sentences_old;
+
+ALTER TABLE codes_new            RENAME TO codes;
+ALTER TABLE codes_sentences_new  RENAME TO codes_sentences;
+
+DROP TABLE codes_old;
+DROP TABLE codes_sentences_old;
+
+-- ---------- indexes ----------
 CREATE UNIQUE INDEX IF NOT EXISTS unq_codes_null_chat
   ON codes(code_name) WHERE chat_id IS NULL;
 
-CREATE TABLE IF NOT EXISTS codes_sentences (
-  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-  code_id INTEGER NOT NULL,
-  sentence_name TEXT NOT NULL,
-  sentence_description TEXT NOT NULL,
-  CONSTRAINT unq_sentences UNIQUE (code_id, sentence_name),
-  CONSTRAINT fk_codes_sentences_code
-    FOREIGN KEY(code_id) REFERENCES codes(id) ON DELETE CASCADE
-);
+CREATE INDEX IF NOT EXISTS idx_codes_chat_id       ON codes(chat_id);
+CREATE INDEX IF NOT EXISTS idx_sentences_code_id   ON codes_sentences(code_id);
+CREATE INDEX IF NOT EXISTS idx_sentences_code_name ON codes_sentences(code_id, sentence_name);
 
--- зарезервированное имя ukrf (нельзя создавать для конкретного чата)
-CREATE TRIGGER IF NOT EXISTS trg_codes_block_ukrf
+-- ---------- triggers ----------
+-- reserved 'ukrf'
+CREATE TRIGGER IF NOT EXISTS trg_codes_block_ukrf_ins
 BEFORE INSERT ON codes
 FOR EACH ROW
 WHEN NEW.code_name = 'ukrf' AND NEW.chat_id IS NOT NULL
 BEGIN
-  SELECT RAISE(ABORT, 'code_name ukrf is reserved');
+  SELECT RAISE(ABORT, 'code_name ukrf is reserved for default (NULL chat)');
 END;
 
--- лимит: не более 10 кодексов на чат
-CREATE TRIGGER IF NOT EXISTS trg_codes_limit_per_chat
+CREATE TRIGGER IF NOT EXISTS trg_codes_block_ukrf_upd
+BEFORE UPDATE OF chat_id, code_name ON codes
+FOR EACH ROW
+WHEN (OLD.code_name = 'ukrf' AND OLD.chat_id IS NULL AND NEW.chat_id IS NOT NULL)
+   OR (OLD.code_name = 'ukrf' AND NEW.code_name <> 'ukrf')
+   OR (NEW.code_name = 'ukrf' AND NEW.chat_id IS NOT NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'default ukrf is immutable and reserved');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_codes_block_ukrf_del
+BEFORE DELETE ON codes
+FOR EACH ROW
+WHEN OLD.code_name = 'ukrf' AND OLD.chat_id IS NULL
+BEGIN
+  SELECT RAISE(ABORT, 'default ukrf cannot be deleted');
+END;
+
+-- per-chat limit 10
+CREATE TRIGGER IF NOT EXISTS trg_codes_limit_per_chat_ins
 BEFORE INSERT ON codes
 FOR EACH ROW
-WHEN NEW.chat_id IS NOT NULL AND (
-  (SELECT COUNT(*) FROM codes c WHERE c.chat_id = NEW.chat_id) >= 10
-)
+WHEN NEW.chat_id IS NOT NULL
+ AND (SELECT COUNT(*) FROM codes c WHERE c.chat_id = NEW.chat_id) >= 10
 BEGIN
   SELECT RAISE(ABORT, 'codes per chat limit reached');
 END;
 
--- лимит: не более 500 статей на кодекс
-CREATE TRIGGER IF NOT EXISTS trg_sentences_limit_per_code
+CREATE TRIGGER IF NOT EXISTS trg_codes_limit_per_chat_upd
+BEFORE UPDATE OF chat_id ON codes
+FOR EACH ROW
+WHEN NEW.chat_id IS NOT NULL
+ AND (SELECT COUNT(*) FROM codes c WHERE c.chat_id = NEW.chat_id) >= 10
+BEGIN
+  SELECT RAISE(ABORT, 'codes per chat limit reached');
+END;
+
+-- per-code sentences limit 500
+CREATE TRIGGER IF NOT EXISTS trg_sentences_limit_per_code_ins
 BEFORE INSERT ON codes_sentences
 FOR EACH ROW
 WHEN (SELECT COUNT(*) FROM codes_sentences s WHERE s.code_id = NEW.code_id) >= 500
@@ -50,16 +167,23 @@ BEGIN
   SELECT RAISE(ABORT, 'sentences per code limit reached');
 END;
 
-BEGIN;
+CREATE TRIGGER IF NOT EXISTS trg_sentences_limit_per_code_upd
+BEFORE UPDATE OF code_id ON codes_sentences
+FOR EACH ROW
+WHEN (SELECT COUNT(*) FROM codes_sentences s WHERE s.code_id = NEW.code_id) >= 500
+BEGIN
+  SELECT RAISE(ABORT, 'sentences per code limit reached');
+END;
 
-INSERT OR IGNORE INTO codes(chat_id, code_name)
-VALUES (NULL, 'ukrf');
+-- ---------- default data ----------
+INSERT OR IGNORE INTO codes(chat_id, code_name) VALUES (NULL, 'ukrf');
 
 WITH cid AS (
   SELECT id FROM codes WHERE chat_id IS NULL AND code_name = 'ukrf'
 ),
 data(sentence_name, sentence_description) AS (
   VALUES
+
     ("105", "Убийство"),
     ("106", "Убийство матерью новорожденного ребенка"),
     ("107", "Убийство, совершенное в состоянии аффекта"),
@@ -310,6 +434,7 @@ data(sentence_name, sentence_description) AS (
 )
 INSERT OR IGNORE INTO codes_sentences(code_id, sentence_name, sentence_description)
 SELECT cid.id, d.sentence_name, d.sentence_description
-FROM cid, data d;
+FROM cid, data AS d;
 
 COMMIT;
+-- =================== END MIGRATION ===================

@@ -30,6 +30,7 @@ from gi.repository import PangoCairo
 
 from aiogram import Dispatcher, Bot
 from aiogram.types import Message, BufferedInputFile
+from aiogram.enums.parse_mode import ParseMode
 
 from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
@@ -38,8 +39,7 @@ from bot.utils.pool_executor import executor
 from bot.utils.cairo_helpers import scale_dims, scale_for_tg, layout_text, image_surface_from_cv2_img
 from bot.handler import Handler
 from bot.utils.omon_db import (
-    init_db, get_codes, get_or_default_code_id, load_sentences,
-    RESERVED_DEFAULT_CODE
+    CodeRecord, init_db, get_codes, get_or_default_code_id, load_sentences
 )
 
 
@@ -67,12 +67,12 @@ class OmonHandler(Handler):
         CommandFilter.setup(self.aliases, dp, bot, self._handle, allow_suffix_for=self.aliases)
 
     @staticmethod
-    def _list_codes_text(chat_id: int, codes: list[str]) -> str:
-        header = "Прикрепи картинку.\nДоступные кодексы для этого чата:"
-        if not codes:
-            return f"{header}\n- (нет)\nПо умолчанию используется: {RESERVED_DEFAULT_CODE}\nПример: /omon"
-        items = "\n".join(f"- {x} (команда: /omon_{x})" for x in codes)
-        return f"{header}\n{items}\nПо умолчанию: {RESERVED_DEFAULT_CODE} (команда: /omon)"
+    def _list_codes_text(codes: list[CodeRecord]) -> str:
+        return f"""прикрепи картинку.
+доступные команды для этого чата:
+• /omon
+{"\n".join(f'• /omon_{x.name}' for x in codes)}
+"""
 
     @staticmethod
     def process_image(img_data: bytes, sentences: dict[str, str], manual_sentences: list[str]) -> str | bytes:
@@ -198,7 +198,7 @@ class OmonHandler(Handler):
         photo = fetch_image_from_message(message)
         if not photo:
             codes = await get_codes(self._db_file, message.chat.id)
-            await message.answer(self._list_codes_text(message.chat.id, codes))
+            await message.answer(self._list_codes_text(codes), parse_mode=ParseMode.HTML)
             return
 
         stream = await self._bot.download(photo)
