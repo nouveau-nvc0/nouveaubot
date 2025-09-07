@@ -112,6 +112,10 @@ aiosqlite==0.21.0 \
     --hash=sha256:131bb8056daa3bc875608c631c678cda73922a2d4ba8aec373b19f18c17e7aa3 \
     --hash=sha256:2549cf4057f95f53dcba16f2b64e8e2791d7e1adedb13197dd8ed77bb226d7d0
     # via nouveaubot (pyproject.toml)
+aiosqlitepool==1.0.0 \
+    --hash=sha256:397f79993d7f34a5740939fb6e52ff29563fad5c400ef8b70990e64331957409 \
+    --hash=sha256:832acb166bb9afef7f46b320d024b343083c90f4eb4bdc8c0d794a79e1fd1b4d
+    # via nouveaubot (pyproject.toml)
 albucore==0.0.24 \
     --hash=sha256:adef6e434e50e22c2ee127b7a3e71f2e35fa088bcf54431e18970b62d97d0005 \
     --hash=sha256:f2cab5431fadf94abf87fd0c89d9f59046e49fe5de34afea8f89bc8390253746

@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import os
 from aiogram import Dispatcher, Bot
 from aiogram.types import Message
 from aiogram.enums.parse_mode import ParseMode
@@ -21,8 +22,7 @@ from bot.command_filter import CommandFilter
 from bot.handler import Handler
 
 from bot.utils.omon_db import (
-    CodeRecord, create_code, delete_code, get_codes,
-    upsert_sentence, delete_sentence
+    CodeRecord, OmonDB
 )
 
 class ConfigOmonHandler(Handler):
@@ -30,6 +30,9 @@ class ConfigOmonHandler(Handler):
     _DEL_USAGE = 'удалить кодекс: <b>/config_omon del <i>[имя кодекса]</i></b>'
     _ADDS_USAGE = 'добавить статью: <b>/config_omon adds <i>[имя кодекса] [название статьи] [описание статьи...]</i></b>'
     _DELS_USAGE = 'удалить статью: <b>/config_omon dels <i>[имя кодекса] [название статьи]</i></b>'
+
+    _db: OmonDB
+    _bot: Bot
 
     @property
     def aliases(self) -> list[str]:
@@ -39,9 +42,9 @@ class ConfigOmonHandler(Handler):
     def description(self) -> str:
         return "настройка кодексов для чата"
 
-    def __init__(self, dp: Dispatcher, bot: Bot, db_file: str) -> None:
-        self._db_file = db_file
+    def __init__(self, dp: Dispatcher, bot: Bot, static_path: str, db_file: str) -> None:
         self._bot = bot
+        self._db = OmonDB.instance(db_file, os.path.join(static_path, 'omon.sql'))
         CommandFilter.setup(self.aliases, dp, bot, self._handle)
 
     @staticmethod
@@ -54,7 +57,7 @@ class ConfigOmonHandler(Handler):
             await message.answer("команда недоступна здесь")
             return
         
-        codes = await get_codes(self._db_file, chat_id)
+        codes = await self._db.get_codes(chat_id)
 
         usage = f"""кодексы в чате:
 {("\n".join(f"• {code.name} ({code.n_sentences})" for code in codes) if codes else "— нет —")}
@@ -90,7 +93,7 @@ class ConfigOmonHandler(Handler):
             return
         
         try:
-            await create_code(self._db_file, chat_id, args[1])
+            await self._db.create_code(chat_id, args[1])
             await message.answer(f"добавлено: {args[1]}")
         except Exception as e:
             await message.answer(f"ошибка: {e}")
@@ -101,7 +104,7 @@ class ConfigOmonHandler(Handler):
             return
 
         try:
-            n = await delete_code(self._db_file, chat_id, args[1])
+            n = await self._db.delete_code(chat_id, args[1])
             await message.answer("удалено" if n else "не найдено")
         except Exception as e:
             await message.answer(f"ошибка: {e}")
@@ -117,7 +120,7 @@ class ConfigOmonHandler(Handler):
             await message.answer("кодекс не найден")
             return
         try:
-            await upsert_sentence(self._db_file, cid, sentence, desc)
+            await self._db.upsert_sentence(cid, sentence, desc)
             await message.answer("ок")
         except Exception as e:
             await message.answer(f"ошибка: {e}")
@@ -133,7 +136,7 @@ class ConfigOmonHandler(Handler):
             await message.answer("кодекс не найден")
             return
         try:
-            n = await delete_sentence(self._db_file, cid, sentence)
+            n = await self._db.delete_sentence(cid, sentence)
             await message.answer("удалено" if n else "не найдено")
         except Exception as e:
             await message.answer(f"ошибка: {e}")

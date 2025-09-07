@@ -43,7 +43,7 @@ async def route(dp: Dispatcher,
 
     handlers: list[Handler] = [
       OmonHandler(dp, bot, static_path, omon_db_file),
-      ConfigOmonHandler(dp, bot, omon_db_file),
+      ConfigOmonHandler(dp, bot, static_path, omon_db_file),
       DemotivatorHandler(dp, bot),
       TacticalHandler(dp, bot),
       CPHandler(dp, bot),

@@ -40,7 +40,7 @@ from bot.utils.pool_executor import executor
 from bot.utils.cairo_helpers import scale_dims, scale_for_tg, layout_text, image_surface_from_cv2_img
 from bot.handler import Handler
 from bot.utils.omon_db import (
-    CodeRecord, init_db, get_codes, get_or_default_code_id, load_sentences
+    CodeRecord, OmonDB
 )
 
 
@@ -51,7 +51,7 @@ class OmonHandler(Handler):
     _FONT_FAMILY = 'DejaVu Sans Mono'
 
     _bot: Bot
-    _db_file: str
+    _db: OmonDB
 
     @property
     def aliases(self) -> list[str]:
@@ -63,8 +63,7 @@ class OmonHandler(Handler):
 
     def __init__(self, dp: Dispatcher, bot: Bot, static_path: str, db_file: str) -> None:
         self._bot = bot
-        self._db_file = db_file
-        init_db(self._db_file, os.path.join(static_path, 'omon.sql'))
+        self._db = OmonDB.instance(db_file, os.path.join(static_path, 'omon.sql'))
         CommandFilter.setup(self.aliases, dp, bot, self._handle, allow_suffix_for=self.aliases)
 
     @staticmethod
@@ -198,7 +197,7 @@ class OmonHandler(Handler):
 
         photo = fetch_image_from_message(message)
         if not photo:
-            codes = await get_codes(self._db_file, message.chat.id)
+            codes = await self._db.get_codes(message.chat.id)
             await message.answer(self._list_codes_text(codes), parse_mode=ParseMode.HTML)
             return
 
@@ -208,8 +207,8 @@ class OmonHandler(Handler):
             return
         pic = await asyncio.get_running_loop().run_in_executor(None, stream.read)
 
-        code_id = await get_or_default_code_id(self._db_file, message.chat.id, code_name)
-        sentences = await load_sentences(self._db_file, code_id)
+        code_id = await self._db.get_or_default_code_id(message.chat.id, code_name)
+        sentences = await self._db.load_sentences(code_id)
 
         result = await asyncio.get_running_loop().run_in_executor(
             executor, self.process_image, pic, sentences, manual_sentences
