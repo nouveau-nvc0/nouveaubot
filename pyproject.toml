@@ -12,7 +12,8 @@ dependencies = [
   "insightface",
   "onnxruntime",
   "PyGObject",
-  "aiosqlite"
+  "aiosqlite",
+  "natsort"
 ]
 
 [tool.setuptools]

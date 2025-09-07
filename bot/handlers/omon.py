@@ -22,6 +22,7 @@ import re
 from typing import Callable
 
 import cv2
+from natsort import natsorted
 import numpy as np
 import cairo
 import gi
@@ -152,7 +153,7 @@ class OmonHandler(Handler):
             f()
 
         # Нижний блок с перечислением статей, сразу нужной ширины
-        bottom_txt = "\n".join("Статья {}. {}".format(x, y) for (x, y) in chosen_sentences)
+        bottom_txt = "\n".join("Статья {}. {}".format(x, y) for (x, y) in natsorted(chosen_sentences, lambda s: s[0]))
         bottom_font_size = OmonHandler._BOTTOM_TEXT_FONT_FACTOR * scaled_w
 
         appendix_w = scaled_w

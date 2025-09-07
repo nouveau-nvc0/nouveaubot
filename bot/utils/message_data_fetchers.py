@@ -16,14 +16,49 @@
 from aiogram.types import Message, PhotoSize
 
 
-def fetch_image_from_message(msg: Message) -> None | PhotoSize:
-    if not msg.photo:
-        if not msg.reply_to_message:
-            return None
-        if not msg.reply_to_message.photo:
-            return None
-        return msg.reply_to_message.photo[-1]
-    return msg.photo[-1]
+def _photo_from_msg(m: Message) -> PhotoSize | None:
+    IMAGE_MIME_PREFIXES = ("image/",)
+    IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif")
+
+    # 1) Native photos
+    if m.photo:
+        return m.photo[-1]
+
+    # 2) Animations/GIFs (as animation or as document)
+    if m.animation and m.animation.thumbnail:
+        return m.animation.thumbnail
+
+    if m.document:
+        mt = (m.document.mime_type or "").lower()
+        fn = (m.document.file_name or "").lower()
+        if (
+            m.document.thumbnail
+            and (mt.startswith(IMAGE_MIME_PREFIXES) or fn.endswith(IMAGE_EXTS))
+        ):
+            return m.document.thumbnail
+
+    # 3) Stickers (static/animated/video) — use thumbnail if present
+    if m.sticker and m.sticker.thumbnail:
+        return m.sticker.thumbnail
+
+    # 4) Videos with a poster (sometimes people send short GIF-like videos)
+    if m.video and m.video.thumbnail:
+        return m.video.thumbnail
+
+    # 5) Video notes / voice notes with preview (rarely useful, but harmless)
+    if m.video_note and m.video_note.thumbnail:
+        return m.video_note.thumbnail
+
+    return None
+
+
+def fetch_image_from_message(msg: Message) -> PhotoSize | None:
+    r = _photo_from_msg(msg)
+    if r:
+        return r
+    if msg.reply_to_message:
+        return _photo_from_msg(msg.reply_to_message)
+    return None
 
 
 def fetch_text_from_message(msg: Message) -> None | str:
