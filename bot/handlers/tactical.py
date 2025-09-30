@@ -24,6 +24,7 @@ from bot.command_filter import CommandFilter
 from bot.utils.cairo_helpers import image_surface_from_cv2_img, scale_dims, scale_for_tg
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.detect_faces import detect_faces
+from bot.utils.misc import scale_norm
 from bot.utils.pool_executor import executor
 from bot.handler import Handler
 
@@ -69,7 +70,7 @@ class TacticalHandler(Handler):
         img_surf, scale = scale_dims(src_surf)
         img_w, img_h = img_surf.get_width(), img_surf.get_height()
         
-        line_width = TacticalHandler._LINE_WIDTH_K * ((img_w * img_h) ** 0.5)
+        line_width = scale_norm(TacticalHandler._LINE_WIDTH_K, img_w, img_h)
         face_width = faces[face_num].x2 - faces[face_num].x1
 
         def draw_triangle(cr: cairo.Context, x1=img_w * TacticalHandler._BUBBLE_DOT1, y1=line_width * 0.5,

@@ -26,6 +26,7 @@ from natsort import natsorted
 import numpy as np
 import cairo
 import gi
+
 gi.require_version("PangoCairo", "1.0")
 from gi.repository import PangoCairo
 
@@ -37,6 +38,7 @@ from bot.command_filter import CommandFilter
 from bot.utils.message_data_fetchers import fetch_image_from_message
 from bot.utils.detect_faces import detect_faces
 from bot.utils.pool_executor import executor
+from bot.utils.misc import scale_norm
 from bot.utils.cairo_helpers import scale_dims, scale_for_tg, layout_text, image_surface_from_cv2_img
 from bot.handler import Handler
 from bot.utils.omon_db import (
@@ -45,9 +47,9 @@ from bot.utils.omon_db import (
 
 
 class OmonHandler(Handler):
-    _FRAME_WIDTH = 6
-    _FRAME_TEXT_FONT_SIZE = 16
-    _BOTTOM_TEXT_FONT_FACTOR = 0.02
+    _FRAME_WIDTH_K = 3 / 512
+    _FRAME_TEXT_FONT_SIZE_K = 10.5 / 512
+    _BOTTOM_TEXT_FONT_K = 10.5 / 512
     _FONT_FAMILY = 'DejaVu Sans Mono'
 
     _bot: Bot
@@ -73,6 +75,9 @@ class OmonHandler(Handler):
 • /omon
 {"\n".join(f'• /omon_{x.name}' for x in codes)}
 """
+    @staticmethod
+    def _nearest_even(x: float) -> int:
+        return int(round(x / 2) * 2)
 
     @staticmethod
     def process_image(img_data: bytes, sentences: dict[str, str], manual_sentences: list[str]) -> str | bytes:
@@ -115,22 +120,25 @@ class OmonHandler(Handler):
 
         label_draws: list[Callable[[], None]] = []
 
+        frame_width = max(OmonHandler._nearest_even(scale_norm(OmonHandler._FRAME_WIDTH_K, scaled_w, scaled_h)), 2)
+        frame_text_font_size = OmonHandler._FRAME_TEXT_FONT_SIZE_K * scaled_w
+
         # Рисуем рамки и верхний текст для каждого лица
         for i, f in enumerate(faces):
             x1 = int(f.x1 * scale); y1 = int(f.y1 * scale)
             x2 = int(f.x2 * scale); y2 = int(f.y2 * scale)
-            base_y = max(y1 - OmonHandler._FRAME_WIDTH, 0) + OmonHandler._FRAME_WIDTH // 2
-            base_x = x2 + OmonHandler._FRAME_WIDTH // 2
+            base_y = max(y1 - frame_width, 0) + frame_width // 2
+            base_x = x2 + frame_width // 2
 
             # рамка
-            work_cr.set_line_width(OmonHandler._FRAME_WIDTH)
+            work_cr.set_line_width(frame_width)
             work_cr.set_source_rgb(0, 1.0, 0)
             work_cr.rectangle(x1, y1, x2 - x1, y2 - y1)
             work_cr.stroke()
 
             txt = "Статья " + chosen_sentences[i][0]
             layout_real, metrics_w, metrics_h = \
-                layout_text(work_cr, txt, OmonHandler._FONT_FAMILY, OmonHandler._FRAME_TEXT_FONT_SIZE)
+                layout_text(work_cr, txt, OmonHandler._FONT_FAMILY, frame_text_font_size)
 
             def draw_label(base_x=base_x, base_y=base_y, layout=layout_real, w=metrics_w, h=metrics_h):
                 work_cr.save()
@@ -153,7 +161,7 @@ class OmonHandler(Handler):
 
         # Нижний блок с перечислением статей, сразу нужной ширины
         bottom_txt = "\n".join("Статья {}. {}".format(x, y) for (x, y) in natsorted(chosen_sentences, lambda s: s[0]))
-        bottom_font_size = OmonHandler._BOTTOM_TEXT_FONT_FACTOR * scaled_w
+        bottom_font_size = OmonHandler._BOTTOM_TEXT_FONT_K * scaled_w
 
         appendix_w = scaled_w
         tmp_surf2 = cairo.ImageSurface(cairo.FORMAT_ARGB32, appendix_w, 1)
