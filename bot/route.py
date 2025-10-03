@@ -18,6 +18,7 @@ from aiogram import Dispatcher, Bot
 from aiogram.types import BotCommand
 
 from bot.handlers.ping import PingHandler
+from bot.handlers.pin import PinHandler
 from bot.handlers.tactical import TacticalHandler
 from bot.handlers.omon import OmonHandler
 from bot.handlers.config_omon import ConfigOmonHandler
@@ -46,6 +47,7 @@ async def route(dp: Dispatcher,
       ConfigOmonHandler(dp, bot, static_path, omon_db_file),
       DemotivatorHandler(dp, bot),
       TacticalHandler(dp, bot),
+      PinHandler(dp, bot),
       CPHandler(dp, bot),
       PingHandler(dp, bot),
     ]
