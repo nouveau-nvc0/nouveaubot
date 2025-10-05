@@ -197,7 +197,7 @@ class OmonHandler(Handler):
         result.write_to_png(out)
         return out.getvalue()
 
-    async def _handle(self, message: Message, args: list[list[str]]) -> None:
+    async def _handle(self, message: Message) -> None:
         text = (message.text or message.caption or "").strip()
         m = re.match(r'^/(?:omon|омон)(?:_([a-z]+))?(?:\s+(.*))?$', text)
         code_name = (m.group(1).lower() if m and m.group(1) else None)

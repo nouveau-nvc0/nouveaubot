@@ -146,13 +146,39 @@ class DemotivatorHandler(Handler):
         buf = io.BytesIO()
         final_surf.write_to_png(buf)
         return buf.getvalue()
+    
+    @staticmethod
+    def _extract_lines(message: Message) -> list[str]:
+        def _text(msg: Message | None) -> str | None:
+            return (msg.text or msg.caption) if msg else None
 
-    async def _handle(self, message: Message, args: list[list[str]]) -> None:
-        if not args:
-            return
-        lines = [' '.join(x) for x in args]
+        def _split_lines(s: str) -> list[str]:
+            return [ln.strip() for ln in s.splitlines() if ln.strip()]
 
+        lines: list[str] = []
+
+        # 1) Строки из сообщения, на которое отвечают
+        reply = message.reply_to_message
+        src = _text(reply)
+        if src:
+            lines.extend(_split_lines(src))
+
+        # 2) Строки из самого сообщения, убираем первое слово (команду)
+        src = _text(message)
+        if src:
+            s = src.lstrip()
+            # убрать вызов команды
+            first_cut = s.split(None, 1)
+            s = first_cut[1] if len(first_cut) == 2 else ""
+            if s:
+                lines.extend(_split_lines(s))
+
+        return lines
+
+    async def _handle(self, message: Message) -> None:
+        lines = self._extract_lines(message)
         photo = fetch_image_from_message(message)
+
         if not photo:
             await message.answer("нужно прикрепить пикчу")
             return

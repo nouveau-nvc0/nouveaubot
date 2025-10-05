@@ -54,7 +54,7 @@ def _photo_from_msg(m: Message) -> PhotoSize | None:
 
 def fetch_image_from_message(msg: Message) -> PhotoSize | None:
     r = _photo_from_msg(msg)
-    if r:
+    if r is not None:
         return r
     if msg.reply_to_message:
         return _photo_from_msg(msg.reply_to_message)

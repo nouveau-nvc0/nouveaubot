@@ -51,13 +51,14 @@ class ConfigOmonHandler(Handler):
     def _chat_id_from_message(m: Message) -> int | None:
         return m.chat.id if getattr(m, "chat", None) else None
 
-    async def _handle(self, message: Message, args: list[list[str]]) -> None:
+    async def _handle(self, message: Message) -> None:
         chat_id = self._chat_id_from_message(message)
         if chat_id is None:
             await message.answer("команда недоступна здесь")
             return
         
         codes = await self._db.get_codes(chat_id)
+        args = message.text.split()[1:] if message.text else []
 
         usage = f"""кодексы в чате:
 {("\n".join(f"• {code.name} ({code.n_sentences})" for code in codes) if codes else "— нет —")}
@@ -70,19 +71,19 @@ class ConfigOmonHandler(Handler):
 
 {self._DELS_USAGE}"""
 
-        if not args or not args[0]:
+        if not args:
             await message.answer(usage, parse_mode=ParseMode.HTML)
             return
         
-        match args[0][0]:
+        match args[0]:
             case 'add':
-                await self._on_add(chat_id, message, args[0])
+                await self._on_add(chat_id, message, args)
             case 'del':
-                await self._on_del(chat_id, message, args[0])
+                await self._on_del(chat_id, message, args)
             case 'adds':
-                await self._on_adds(message, args[0], codes)
+                await self._on_adds(message, args, codes)
             case 'dels':
-                await self._on_dels(message, args[0], codes)
+                await self._on_dels(message, args, codes)
             case _:
                 await message.answer(usage, parse_mode=ParseMode.HTML)
             

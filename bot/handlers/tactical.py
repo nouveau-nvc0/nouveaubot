@@ -112,16 +112,18 @@ class TacticalHandler(Handler):
         final_surf.write_to_png(buf)
         return buf.getvalue()
 
-    async def _handle(self, message: Message, args: list[list[str]]) -> None:
+    async def _handle(self, message: Message) -> None:
         photo = fetch_image_from_message(message)
         if not photo:
             await message.answer("нужно прикрепить пикчу")
             return
 
         face_num = 0
+        args = message.text.split()[1:] if message.text else []
+
         if len(args) > 0:
-            if args[0][0].isnumeric():
-                face_num = int(args[0][0]) - 1
+            if args[0].isnumeric():
+                face_num = int(args[0]) - 1
             else:
                 await message.answer("напишите номер лица")
                 return

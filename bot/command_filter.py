@@ -32,7 +32,7 @@ class CommandFilter(Filter):
         self,
         bot_username: str,
         aliases: Iterable[str],
-        allow_suffix_for: Iterable[str] | None = None,     # новые опции
+        allow_suffix_for: Iterable[str] | None = None,
         suffix_pattern: str = r"[a-z]+"                    # по умолчанию: только a-z
     ) -> None:
         self._aliases = list(aliases)
@@ -42,16 +42,15 @@ class CommandFilter(Filter):
             r"^/([^\s@]+)(?:@" + bot_username + r")?(?=\s|$)(?:\s+([\s\S]*))?$"
         )
 
-    def parse_command(self, text: str) -> tuple[None, None] | tuple[str, str]:
+    def parse_command(self, text: str) -> str | None:
         mt = self._regex_pattern.match(text)
         if mt:
             cmd = mt.group(1)
-            args = mt.group(2) or ""
-            return cmd, args
-        return None, None
+            return cmd
+        return None
 
     def _match_alias(self, cmd: str) -> bool:
-        # 1) точное совпадение с любым alias — как раньше
+        # 1) точное совпадение с любым alias
         if cmd in self._aliases:
             return True
         # 2) вариант alias_suffix — только если alias разрешён в allow_suffix_for
@@ -62,18 +61,16 @@ class CommandFilter(Filter):
                     return True
         return False
 
-    async def __call__(self, message: Message) -> bool | dict[str, list[list[str]]]:
+    async def __call__(self, message: Message) -> bool:
         msg = message.text if message.text else message.caption
         if not msg:
             return False
 
-        cmd, args = self.parse_command(msg)
+        cmd = self.parse_command(msg)
         if cmd is None or not self._match_alias(cmd):
             return False
 
-        # многострочные аргументы → список строк → список слов
-        args_list = [line.split() for line in args.splitlines() if line.strip()] if args is not None else []
-        return {"args": args_list}
+        return True
 
     @staticmethod
     def setup(
